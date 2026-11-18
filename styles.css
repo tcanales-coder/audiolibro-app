@@ -1,0 +1,161 @@
+:root {
+  --fondo: #f7f3ee;
+  --superficie: #ffffff;
+  --texto: #2a2430;
+  --suave: #6d6575;
+  --linea: #e6dfd6;
+  --acento: #7a4e9a;
+  --acento-texto: #ffffff;
+  --peligro: #b3392f;
+  --barra: #2b2238;
+  --barra-texto: #f5eefc;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #17131c;
+    --superficie: #221c29;
+    --texto: #efe9f4;
+    --suave: #a99fb3;
+    --linea: #352c3f;
+    --acento: #c49be6;
+    --acento-texto: #1b1421;
+    --peligro: #f08a80;
+    --barra: #1e1826;
+    --barra-texto: #efe9f4;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--fondo);
+  color: var(--texto);
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+
+.barra {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: var(--barra); color: var(--barra-texto);
+}
+.barra h1 { margin: 0; font-size: 1.15rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.barra .icono { color: var(--barra-texto); margin-left: -8px; }
+
+.vista { max-width: 560px; margin: 0 auto; padding: 16px; }
+
+.icono {
+  background: none; border: 0; width: 48px; height: 48px; border-radius: 50%;
+  display: inline-grid; place-items: center; flex: none;
+}
+.icono svg, .play svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.icono:active { background: color-mix(in srgb, var(--texto) 10%, transparent); }
+.icono.texto { font-weight: 700; font-size: .95rem; font-variant-numeric: tabular-nums; }
+
+.boton-principal {
+  display: block; width: 100%; padding: 14px 18px; margin-top: 16px;
+  border: 0; border-radius: 14px; background: var(--acento); color: var(--acento-texto);
+  font-weight: 600; font-size: 1.05rem;
+}
+.boton-peligro {
+  display: block; width: 100%; padding: 12px; margin-top: 28px;
+  border: 1px solid var(--peligro); border-radius: 12px; background: none; color: var(--peligro);
+}
+.chip {
+  padding: 10px 16px; border-radius: 999px; border: 1px solid var(--linea);
+  background: var(--superficie); font-size: .95rem;
+}
+.chip.activo { border-color: var(--acento); color: var(--acento); font-weight: 600; }
+
+.nota { color: var(--suave); font-size: .9rem; }
+
+/* Biblioteca */
+.vacio { text-align: center; padding: 40px 8px 8px; color: var(--suave); }
+.vacio-titulo { font-size: 1.2rem; color: var(--texto); font-weight: 600; margin-bottom: 4px; }
+.libros { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.tarjeta {
+  width: 100%; display: flex; align-items: center; gap: 14px; text-align: left;
+  padding: 12px; border-radius: 16px; border: 1px solid var(--linea); background: var(--superficie);
+}
+.mini {
+  width: 56px; height: 56px; border-radius: 12px; flex: none;
+  display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 1.1rem; letter-spacing: .5px;
+}
+.info { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.info .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .d { color: var(--suave); font-size: .88rem; }
+.barra-mini { height: 4px; border-radius: 4px; background: var(--linea); overflow: hidden; }
+.barra-mini span { display: block; height: 100%; background: var(--acento); }
+.pct { color: var(--suave); font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+/* Reproductor */
+.portada {
+  width: min(62vw, 240px); aspect-ratio: 1; margin: 8px auto 16px; border-radius: 22px;
+  display: grid; place-items: center; color: #fff; font-size: 3.2rem; font-weight: 700;
+  box-shadow: 0 12px 30px rgb(0 0 0 / .18);
+}
+.capitulo-actual { text-align: center; margin: 0 0 12px; font-weight: 600; min-height: 1.45em; }
+.progreso input[type=range] {
+  --p: 0%;
+  width: 100%; height: 28px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none;
+}
+.progreso input[type=range]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 6px;
+  background: linear-gradient(to right, var(--acento) var(--p), var(--linea) var(--p));
+}
+.progreso input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; background: var(--acento); border: 0;
+}
+.progreso input[type=range]::-moz-range-track { height: 6px; border-radius: 6px; background: var(--linea); }
+.progreso input[type=range]::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--acento); }
+.progreso input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--acento); border: 0; }
+.tiempos { display: flex; justify-content: space-between; color: var(--suave); font-size: .85rem; font-variant-numeric: tabular-nums; }
+
+.controles { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 8px; }
+.play {
+  width: 76px; height: 76px; border-radius: 50%; border: 0; background: var(--acento); color: var(--acento-texto);
+  display: grid; place-items: center;
+}
+.play svg { width: 32px; height: 32px; fill: currentColor; }
+#ico-pausa { fill: none; stroke-width: 3.2; }
+
+.opciones { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 10px 0 4px; }
+
+.sub { font-size: 1rem; margin: 26px 0 8px; color: var(--suave); font-weight: 600; }
+.capitulos { list-style: none; margin: 0; padding: 0; border: 1px solid var(--linea); border-radius: 16px; overflow: hidden; background: var(--superficie); }
+.capitulos li + li { border-top: 1px solid var(--linea); }
+.capitulos button {
+  width: 100%; display: flex; gap: 12px; justify-content: space-between; align-items: center;
+  padding: 13px 14px; background: none; border: 0; text-align: left;
+}
+.capitulos .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.capitulos .dur { color: var(--suave); font-size: .85rem; font-variant-numeric: tabular-nums; flex: none; }
+.capitulos li.activo button { color: var(--acento); font-weight: 600; background: color-mix(in srgb, var(--acento) 10%, transparent); }
+
+/* Diálogos y avisos */
+dialog {
+  border: 0; border-radius: 18px; padding: 20px; width: min(92vw, 420px);
+  background: var(--superficie); color: var(--texto);
+}
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
+dialog label { display: block; font-weight: 600; margin: 12px 0 6px; }
+dialog input {
+  width: 100%; padding: 12px; font: inherit; border-radius: 10px; border: 1px solid var(--linea);
+  background: var(--fondo); color: var(--texto);
+}
+.fila-botones { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 18px; }
+.fila-botones .boton-principal, .fila-botones .boton-peligro { width: auto; margin: 0; padding: 10px 20px; }
+
+.aviso {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px;
+  background: var(--barra); color: var(--barra-texto); box-shadow: 0 8px 24px rgb(0 0 0 / .25); z-index: 10;
+}

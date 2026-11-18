@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Audiolibro</title>
+  <meta name="description" content="Escucha tus audiolibros generados con VoxCPM.">
+  <meta name="theme-color" content="#2b2238">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="barra">
+    <button id="btn-volver" class="icono" aria-label="Volver a la biblioteca" hidden>
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="titulo-barra">Mis audiolibros</h1>
+  </header>
+
+  <!-- Biblioteca -->
+  <main id="vista-biblioteca" class="vista">
+    <div id="vacio" class="vacio" hidden>
+      <p class="vacio-titulo">Aún no tienes libros</p>
+      <p>Agrega los MP3 de un libro, o el archivo .zip que descargas desde la pestaña <b>Output</b> de Kaggle.</p>
+    </div>
+    <ul id="lista-libros" class="libros"></ul>
+    <button id="btn-agregar" class="boton-principal">+ Agregar libro</button>
+    <input id="entrada-archivos" type="file" multiple
+           accept="audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.wav,.zip" hidden>
+    <p class="nota" id="nota-espacio"></p>
+  </main>
+
+  <!-- Reproductor -->
+  <main id="vista-reproductor" class="vista" hidden>
+    <div class="portada" id="portada" aria-hidden="true"></div>
+    <p class="capitulo-actual" id="capitulo-actual"></p>
+
+    <div class="progreso">
+      <input id="barra-tiempo" type="range" min="0" max="1000" value="0" aria-label="Posición en el capítulo">
+      <div class="tiempos"><span id="t-actual">0:00</span><span id="t-total">0:00</span></div>
+    </div>
+
+    <div class="controles">
+      <button id="btn-anterior" class="icono" aria-label="Capítulo anterior">
+        <svg viewBox="0 0 24 24"><path d="M6 5v14M18 5l-9 7 9 7z"/></svg>
+      </button>
+      <button id="btn-atras" class="icono texto" aria-label="Retroceder 30 segundos">−30</button>
+      <button id="btn-play" class="play" aria-label="Reproducir">
+        <svg id="ico-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
+        <svg id="ico-pausa" viewBox="0 0 24 24" hidden><path d="M8 5v14M16 5v14"/></svg>
+      </button>
+      <button id="btn-adelante" class="icono texto" aria-label="Adelantar 30 segundos">+30</button>
+      <button id="btn-siguiente" class="icono" aria-label="Capítulo siguiente">
+        <svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l9 7-9 7z"/></svg>
+      </button>
+    </div>
+
+    <div class="opciones">
+      <button id="btn-velocidad" class="chip">Velocidad 1×</button>
+      <button id="btn-dormir" class="chip">Dormir: no</button>
+    </div>
+
+    <h2 class="sub">Capítulos</h2>
+    <ol id="lista-capitulos" class="capitulos"></ol>
+    <button id="btn-borrar" class="boton-peligro">Borrar este libro del teléfono</button>
+  </main>
+
+  <!-- Diálogo para nombrar el libro -->
+  <dialog id="dlg-nombre">
+    <form method="dialog">
+      <h2>Nuevo libro</h2>
+      <p id="dlg-resumen" class="nota"></p>
+      <label for="in-titulo">Título</label>
+      <input id="in-titulo" required maxlength="120" autocomplete="off">
+      <div class="fila-botones">
+        <button value="cancelar" class="chip" formnovalidate>Cancelar</button>
+        <button value="ok" class="boton-principal">Guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirmar">
+    <form method="dialog">
+      <h2>¿Borrar el libro?</h2>
+      <p class="nota">Se borran los audios de este teléfono. No se puede deshacer, pero puedes volver a agregarlos.</p>
+      <div class="fila-botones">
+        <button value="cancelar" class="chip">Cancelar</button>
+        <button value="ok" class="boton-peligro">Borrar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
+  <audio id="audio" preload="metadata"></audio>
+
+  <script src="vendor/fflate-0.8.2.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
