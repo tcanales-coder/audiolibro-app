@@ -17,6 +17,9 @@
       <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
     <h1 id="titulo-barra">Mis audiolibros</h1>
+    <button id="btn-texto" class="icono derecha" aria-label="Seguir el texto" hidden>
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h13"/></svg>
+    </button>
   </header>
 
   <!-- Biblioteca -->
@@ -28,7 +31,7 @@
     <ul id="lista-libros" class="libros"></ul>
     <button id="btn-agregar" class="boton-principal">+ Agregar libro</button>
     <input id="entrada-archivos" type="file" multiple
-           accept="audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.wav,.zip" hidden>
+           accept="audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.wav,.zip,.json" hidden>
     <p class="nota" id="nota-espacio"></p>
   </main>
 
@@ -109,6 +112,22 @@
       </div>
     </form>
   </dialog>
+
+  <!-- Seguir el texto -->
+  <section id="panel-texto" class="panel-texto" hidden aria-label="Texto del capítulo">
+    <div class="texto-cabecera">
+      <p id="texto-capitulo" class="texto-capitulo"></p>
+    </div>
+    <article id="texto-contenido" class="texto-contenido"></article>
+    <input id="entrada-epub" type="file" accept=".epub,application/epub+zip" hidden>
+    <div class="texto-pie">
+      <button id="btn-cerrar-texto" class="chip">Cerrar texto</button>
+      <button id="btn-play-texto" class="play chico" aria-label="Reproducir o pausar">
+        <svg id="ico-play-t" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
+        <svg id="ico-pausa-t" viewBox="0 0 24 24" hidden><path d="M8 5v14M16 5v14"/></svg>
+      </button>
+    </div>
+  </section>
 
   <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
   <audio id="audio" preload="metadata"></audio>

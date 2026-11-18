@@ -84,7 +84,7 @@ async function abrirZip(archivo) {
   const pendientes = [];
   const unzip = new fflate.Unzip(entrada => {
     const nombre = entrada.name;
-    if (!EXT_AUDIO.test(nombre) || /(^|\/)(__MACOSX|_partes)\//.test(nombre)) return;
+    if (!(EXT_AUDIO.test(nombre) || /\.json$/i.test(nombre)) || /(^|\/)(__MACOSX|_partes)\//.test(nombre)) return;
     const trozos = [];
     pendientes.push(new Promise((ok, mal) => {
       entrada.ondata = (err, datos, final) => {
@@ -114,13 +114,24 @@ async function expandirArchivos(lista) {
   for (const f of lista) {
     if (/\.zip$/i.test(f.name)) {
       salida.push(...await abrirZip(f));
-    } else if (EXT_AUDIO.test(f.name)) {
+    } else if (EXT_AUDIO.test(f.name) || /\.json$/i.test(f.name)) {
       salida.push({ nombre: f.name, blob: f });
     }
   }
+  // .json = sincronización texto-audio que genera el notebook (mismo nombre que el MP3)
+  const base = n => n.replace(/\.[^.]+$/, "");
+  const sinc = new Map();
+  for (const a of salida.filter(a => /\.json$/i.test(a.nombre))) {
+    try {
+      const d = JSON.parse(await a.blob.text());
+      if (Array.isArray(d.frases)) sinc.set(base(a.nombre), d.frases.filter(f => typeof f.t === "number" && f.texto));
+    } catch {}
+  }
+  const audios = salida.filter(a => EXT_AUDIO.test(a.nombre));
   // si vienen MP3 por capítulo y además un .m4b del libro entero, quedarse con los capítulos
-  const capitulos = salida.filter(a => !/\.m4b$/i.test(a.nombre));
-  const elegidos = capitulos.length > 1 ? capitulos : salida;
+  const capitulos = audios.filter(a => !/\.m4b$/i.test(a.nombre));
+  const elegidos = capitulos.length > 1 ? capitulos : audios;
+  for (const a of elegidos) a.frases = sinc.get(base(a.nombre)) || null;
   return elegidos.sort((a, b) => ordenNatural(a.nombre, b.nombre));
 }
 
@@ -160,14 +171,16 @@ async function importar(lista) {
       avisar(`Guardando ${i + 1} de ${pistas.length}…`, 60000);
       const idArchivo = uid();
       await BD.guardarArchivo(idArchivo, pistas[i].blob);
-      libro.pistas.push({ nombre: nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob) });
+      libro.pistas.push({ nombre: nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob),
+                          frases: pistas[i].frases || null });
     }
     await BD.guardarLibro(libro);
   } catch (e) {
     avisar("No se pudo guardar (¿falta espacio en el teléfono?): " + e.message, 8000);
     return;
   }
-  avisar(`“${titulo}” agregado`);
+  const conTexto = libro.pistas.some(p => p.frases && p.frases.length);
+  avisar(`“${titulo}” agregado${conTexto ? " · con texto para seguir la lectura" : ""}`);
   pedirAlmacenamientoPersistente();
   mostrarBiblioteca();
 }
@@ -188,6 +201,8 @@ async function mostrarBiblioteca() {
   $("vista-reproductor").hidden = true;
   $("vista-biblioteca").hidden = false;
   $("btn-volver").hidden = true;
+  $("btn-texto").hidden = true;
+  cerrarTexto();
   $("titulo-barra").textContent = "Mis audiolibros";
 
   for (const u of urlsPortada.values()) URL.revokeObjectURL(u);
@@ -284,6 +299,7 @@ async function abrirLibro(id) {
   $("vista-biblioteca").hidden = true;
   $("vista-reproductor").hidden = false;
   $("btn-volver").hidden = false;
+  $("btn-texto").hidden = false;
   $("titulo-barra").textContent = l.titulo;
   await pintarPortada();
 
@@ -452,6 +468,8 @@ function actualizarBotonPlay() {
   $("ico-play").toggleAttribute("hidden", !pausado);
   $("ico-pausa").toggleAttribute("hidden", pausado);
   $("btn-play").setAttribute("aria-label", pausado ? "Reproducir" : "Pausar");
+  $("ico-play-t").toggleAttribute("hidden", !pausado);
+  $("ico-pausa-t").toggleAttribute("hidden", pausado);
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = pausado ? "paused" : "playing";
 }
 
@@ -475,6 +493,152 @@ function actualizarMediaSession() {
   h("previoustrack", anterior);
   h("nexttrack", siguiente);
   h("seekto", e => { audio.currentTime = e.seekTime; });
+}
+
+// ---------- seguir el texto ----------
+const lectura = { pista: -1, actual: -1, spans: [], manualHasta: 0 };
+const tieneTexto = l => !!l && l.pistas.some(p => p.frases && p.frases.length);
+
+function abrirTexto() {
+  $("panel-texto").hidden = false;
+  document.body.classList.add("sin-scroll");
+  lectura.pista = -1;
+  lectura.libre = !tieneTexto(estado.libro);
+  if (lectura.libre) pintarEpubLibre(); else pintarTexto();
+}
+
+// ----- Libros solo con audio: el EPUB se lee libremente, sin sincronía -----
+// Extrae el texto de un EPUB (solo párrafos y títulos, sin código ni estilos).
+function leerEpub(bytes) {
+  const zip = fflate.unzipSync(bytes);
+  const txt = ruta => zip[ruta] ? fflate.strFromU8(zip[ruta]) : null;
+  const xml = t => new DOMParser().parseFromString(t, "application/xml");
+  const contenedor = txt("META-INF/container.xml");
+  if (!contenedor) throw new Error("no parece un EPUB");
+  const rutaOpf = xml(contenedor).querySelector("rootfile")?.getAttribute("full-path");
+  const opf = xml(txt(rutaOpf));
+  const dir = rutaOpf.includes("/") ? rutaOpf.replace(/[^/]*$/, "") : "";
+  const manifiesto = {};
+  opf.querySelectorAll("manifest > item").forEach(it => { manifiesto[it.getAttribute("id")] = it.getAttribute("href"); });
+  const titulo = opf.querySelector("metadata > title, metadata > *|title")?.textContent?.trim() || "";
+  const resolver = href => {
+    const partes = (dir + decodeURIComponent(href.split("#")[0])).split("/"), out = [];
+    for (const p of partes) { if (p === "..") out.pop(); else if (p && p !== ".") out.push(p); }
+    return out.join("/");
+  };
+  const BLOQUES = "h1,h2,h3,h4,p,li,blockquote,div";
+  const capitulos = [];
+  opf.querySelectorAll("spine > itemref").forEach(ref => {
+    const href = manifiesto[ref.getAttribute("idref")];
+    const html = href && txt(resolver(href));
+    if (!html) return;
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("script,style,nav,sup").forEach(e => e.remove());
+    const bloques = [];
+    doc.body?.querySelectorAll(BLOQUES).forEach(el => {
+      if (el.querySelector(BLOQUES)) return;                 // solo bloques "hoja", para no repetir texto
+      const t = el.textContent.replace(/\u00ad/g, "").replace(/\s+/g, " ").trim();
+      if (t) bloques.push({ t, h: /^H[1-3]$/.test(el.tagName) });
+    });
+    if (bloques.reduce((n, b) => n + b.t.length, 0) >= 40) capitulos.push(bloques);
+  });
+  if (!capitulos.length) throw new Error("no encontré texto");
+  return { titulo, capitulos };
+}
+
+async function agregarEpub(archivo) {
+  const l = estado.libro;
+  if (!l || !archivo) return;
+  let datos;
+  try { datos = leerEpub(new Uint8Array(await archivo.arrayBuffer())); }
+  catch (e) { avisar("No pude abrir ese EPUB: " + e.message); return; }
+  const anterior = l.epubId;
+  l.epubId = uid();
+  l.lecturaScroll = 0;
+  await BD.guardarArchivo(l.epubId, new Blob([JSON.stringify(datos)], { type: "application/json" }));
+  await BD.guardarLibro(l);
+  if (anterior) await BD.borrarArchivo(anterior);
+  pintarEpubLibre();
+}
+
+async function pintarEpubLibre() {
+  const l = estado.libro, cont = $("texto-contenido");
+  cont.innerHTML = "";
+  lectura.spans = [];
+  if (!l.epubId) {
+    $("texto-capitulo").textContent = "Leer el libro";
+    cont.innerHTML = `<div class="sin-epub">
+      <p>Este libro se agregó solo con audio, así que el texto no va sincronizado.</p>
+      <p>Puedes abrir su EPUB y leerlo a tu ritmo mientras escuchas. La app recordará hasta dónde bajaste.</p>
+      <button id="btn-elegir-epub" class="boton-principal">Elegir EPUB</button></div>`;
+    $("btn-elegir-epub").onclick = () => $("entrada-epub").click();
+    return;
+  }
+  const blob = await BD.archivo(l.epubId);
+  const datos = blob ? JSON.parse(await blob.text()) : { capitulos: [] };
+  $("texto-capitulo").textContent = "Lectura libre (sin sincronía)";
+  const frag = document.createDocumentFragment();
+  for (const cap of datos.capitulos) {
+    const sec = document.createElement("section");
+    sec.className = "cap-epub";
+    for (const b of cap) {
+      const el = document.createElement(b.h ? "h3" : "p");
+      el.textContent = b.t;
+      sec.appendChild(el);
+    }
+    frag.appendChild(sec);
+  }
+  cont.appendChild(frag);
+  const cambiar = document.createElement("button");
+  cambiar.className = "chip cambiar-epub";
+  cambiar.textContent = "Usar otro EPUB";
+  cambiar.onclick = () => $("entrada-epub").click();
+  cont.appendChild(cambiar);
+  $("panel-texto").scrollTop = l.lecturaScroll || 0;
+}
+function cerrarTexto() {
+  $("panel-texto").hidden = true;
+  document.body.classList.remove("sin-scroll");
+}
+function pintarTexto() {
+  const l = estado.libro, p = l.pistas[estado.pista];
+  const cont = $("texto-contenido");
+  lectura.pista = estado.pista; lectura.actual = -1; lectura.spans = [];
+  cont.innerHTML = "";
+  $("texto-capitulo").textContent = `${estado.pista + 1} de ${l.pistas.length} · ${p.nombre}`;
+  if (!p.frases || !p.frases.length) {
+    cont.innerHTML = '<p class="nota">Este capítulo no tiene texto sincronizado.</p>';
+    return;
+  }
+  let parrafo = document.createElement("p");
+  p.frases.forEach((f, i) => {
+    const s = document.createElement("span");
+    s.className = "frase";
+    s.textContent = f.texto + " ";
+    s.onclick = () => { audio.currentTime = f.t; if (audio.paused) audio.play().catch(() => {}); lectura.manualHasta = 0; };
+    parrafo.appendChild(s);
+    lectura.spans.push(s);
+    // un fragmento que termina en punto final y el siguiente parte con mayúscula: posible fin de párrafo
+    if (i % 4 === 3 && /[.!?…»”]$/.test(f.texto)) { cont.appendChild(parrafo); parrafo = document.createElement("p"); }
+  });
+  cont.appendChild(parrafo);
+  $("panel-texto").scrollTop = 0;
+  seguirTexto(true);
+}
+function seguirTexto(forzar = false) {
+  if ($("panel-texto").hidden || !estado.libro || lectura.libre) return;
+  if (lectura.pista !== estado.pista) return pintarTexto();
+  const frases = estado.libro.pistas[estado.pista].frases;
+  if (!frases || !frases.length) return;
+  const t = audio.currentTime;
+  let lo = 0, hi = frases.length - 1, idx = 0;          // búsqueda binaria de la frase actual
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (frases[m].t <= t + 0.05) { idx = m; lo = m + 1; } else hi = m - 1; }
+  if (idx === lectura.actual && !forzar) return;
+  lectura.spans[lectura.actual]?.classList.remove("leyendo");
+  lectura.actual = idx;
+  const s = lectura.spans[idx];
+  s.classList.add("leyendo");
+  if (forzar || Date.now() > lectura.manualHasta) s.scrollIntoView({ block: "center", behavior: forzar ? "auto" : "smooth" });
 }
 
 // ---------- velocidad y temporizador ----------
@@ -532,7 +696,7 @@ barra.addEventListener("change", async () => {
   actualizarTiempo();
 });
 
-audio.addEventListener("timeupdate", () => { actualizarTiempo(); guardarPosicion(); });
+audio.addEventListener("timeupdate", () => { actualizarTiempo(); guardarPosicion(); seguirTexto(); });
 audio.addEventListener("play", actualizarBotonPlay);
 audio.addEventListener("pause", () => { actualizarBotonPlay(); guardarPosicion(true); });
 audio.addEventListener("ended", async () => {
@@ -555,6 +719,19 @@ $("btn-siguiente").onclick = siguiente;
 $("btn-velocidad").onclick = cambiarVelocidad;
 $("btn-dormir").onclick = cambiarDormir;
 $("btn-volver").onclick = () => { guardarPosicion(true); mostrarBiblioteca(); };
+$("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : cerrarTexto());
+$("btn-cerrar-texto").onclick = cerrarTexto;
+$("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value = ""; agregarEpub(f); };
+// lectura libre: recordar hasta dónde bajó la persona
+let guardadoScroll;
+$("panel-texto").addEventListener("scroll", () => {
+  if (!lectura.libre || !estado.libro?.epubId) return;
+  clearTimeout(guardadoScroll);
+  guardadoScroll = setTimeout(() => { estado.libro.lecturaScroll = $("panel-texto").scrollTop; BD.guardarLibro(estado.libro).catch(() => {}); }, 600);
+}, { passive: true });
+$("btn-play-texto").onclick = alternar;
+// si la persona desplaza el texto con el dedo, no se lo movemos por 6 segundos
+["touchmove", "wheel"].forEach(ev => $("panel-texto").addEventListener(ev, () => { lectura.manualHasta = Date.now() + 6000; }, { passive: true }));
 $("portada").onclick = () => $("entrada-portada").click();
 $("entrada-portada").onchange = e => { const f = e.target.files[0]; e.target.value = ""; cambiarPortada(f); };
 $("btn-agregar").onclick = () => $("entrada-archivos").click();

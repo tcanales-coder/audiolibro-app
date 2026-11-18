@@ -134,7 +134,7 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
   display: grid; place-items: center;
 }
 .play svg { width: 32px; height: 32px; fill: currentColor; }
-#ico-pausa { fill: none; stroke-width: 3.2; }
+#ico-pausa, #ico-pausa-t { fill: none; stroke-width: 3.2; }
 
 .opciones { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 4px; }
 .opcion {
@@ -178,3 +178,32 @@ dialog input {
   max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px;
   background: var(--barra); color: var(--barra-texto); box-shadow: 0 8px 24px rgb(0 0 0 / .25); z-index: 10;
 }
+
+/* Seguir el texto */
+.barra .derecha { margin-left: auto; margin-right: -8px; }
+body.sin-scroll { overflow: hidden; }
+.panel-texto {
+  position: fixed; left: 0; right: 0; bottom: 0; top: calc(72px + env(safe-area-inset-top)); z-index: 4;
+  overflow-y: auto; overscroll-behavior: contain; background: var(--fondo);
+}
+.texto-cabecera { position: sticky; top: 0; background: var(--fondo); padding: 12px 20px 8px; border-bottom: 1px solid var(--linea); }
+.texto-capitulo { margin: 0; color: var(--suave); font-size: .9rem; font-weight: 600; text-align: center; }
+.texto-contenido {
+  max-width: 620px; margin: 0 auto; padding: 18px 22px 140px;
+  font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-size: 1.15rem; line-height: 1.7;
+}
+.texto-contenido p { margin: 0 0 1em; }
+.frase { border-radius: 4px; transition: background-color .25s, color .25s; cursor: pointer; }
+.frase.leyendo { background: color-mix(in srgb, var(--acento) 22%, transparent); color: var(--texto); }
+.texto-pie {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, var(--fondo) 70%, transparent);
+}
+.play.chico { width: 56px; height: 56px; }
+.play.chico svg { width: 24px; height: 24px; }
+.texto-contenido h3 { font-family: system-ui, sans-serif; font-size: 1.2rem; margin: 1.6em 0 .8em; }
+.cap-epub + .cap-epub { border-top: 1px solid var(--linea); padding-top: .6em; }
+.sin-epub { font-family: system-ui, sans-serif; font-size: 1rem; text-align: center; padding-top: 24px; color: var(--suave); }
+.cambiar-epub { display: block; margin: 24px auto 0; font-family: system-ui, sans-serif; }

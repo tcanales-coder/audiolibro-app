@@ -43,6 +43,7 @@ const BD = (() => {
       t.objectStore("libros").delete(libro.id);
       for (const p of libro.pistas) t.objectStore("archivos").delete(p.idArchivo);
       if (libro.portadaId) t.objectStore("archivos").delete(libro.portadaId);
+      if (libro.epubId) t.objectStore("archivos").delete(libro.epubId);
     }),
   };
 })();

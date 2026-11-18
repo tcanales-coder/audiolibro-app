@@ -8,6 +8,9 @@ App para el celular (se instala desde Chrome) para escuchar audiolibros generado
 - Biblioteca de libros guardados en el teléfono (funciona sin internet).
 - Agrega un libro desde sus MP3 o desde el `.zip` que se descarga en la pestaña **Output** de Kaggle.
 - Reproductor con capítulos, ±30 segundos, velocidad, temporizador para dormir y controles en la pantalla de bloqueo.
+- Barra de progreso del libro completo, dividida por capítulos.
+- Portada propia para cada libro.
+- **Seguir el texto:** si el libro se generó desde un EPUB con el notebook, el `.zip` trae un `.json` por capítulo y la app resalta la parte que se está leyendo. Si el libro se agregó solo con audio, puedes abrir su EPUB y leerlo libremente (sin sincronía).
 - Recuerda dónde quedaste en cada libro.
 
 ## Cómo instalarla en Android
