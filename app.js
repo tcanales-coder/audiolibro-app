@@ -382,22 +382,55 @@ function ubicar(t) {
   return { pista: 0, tiempo: 0 };
 }
 
+// Barra al estilo de capítulos de podcast: un tramo por capítulo, separados por un espacio.
+// El valor del control (0–10000) representa la posición en píxeles sobre la barra,
+// así lo que la persona toca coincide exactamente con el tramo que ve.
 function pintarSegmentos() {
   const cont = $("segmentos");
   cont.innerHTML = "";
+  const l = estado.libro;
   const total = totalLibro();
-  if (!total) return;
-  for (let i = 1; i < estado.libro.pistas.length; i++) {
-    const m = document.createElement("span");
-    m.style.left = (inicioPista(i) / total * 100) + "%";
-    cont.appendChild(m);
-  }
+  l.pistas.forEach((p, i) => {
+    const seg = document.createElement("span");
+    seg.className = "seg";
+    seg.style.flexGrow = total ? Math.max(durPista(i), total * 0.004) : 1;
+    seg.innerHTML = '<span class="relleno"></span>';
+    cont.appendChild(seg);
+  });
 }
 
-function pintarBarra(valor) {
+// tiempo del libro -> fracción horizontal (0..1)
+function tiempoAFraccion(t) {
+  const cont = $("segmentos"), segs = cont.children, ancho = cont.clientWidth;
+  if (!segs.length || !ancho) return 0;
+  const u = ubicar(t), seg = segs[u.pista], d = durPista(u.pista) || 1;
+  return (seg.offsetLeft + Math.min(1, u.tiempo / d) * seg.offsetWidth) / ancho;
+}
+// fracción horizontal -> tiempo del libro (los espacios se cuentan como el borde más cercano)
+function fraccionATiempo(f) {
+  const cont = $("segmentos"), segs = [...cont.children], x = f * cont.clientWidth;
+  let t = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i], d = durPista(i), fin = s.offsetLeft + s.offsetWidth;
+    if (x <= fin || i === segs.length - 1) return t + Math.max(0, Math.min(1, (x - s.offsetLeft) / s.offsetWidth)) * d;
+    t += d;
+  }
+  return t;
+}
+
+function pintarBarra(fraccion, tiempo) {
   const b = $("barra-tiempo");
-  b.value = valor;
-  b.style.setProperty("--p", (valor / 100) + "%");
+  b.value = Math.round(fraccion * 10000);
+  $("punto").style.left = (fraccion * 100) + "%";
+  const segs = $("segmentos").children;
+  let inicio = 0;
+  for (let i = 0; i < segs.length; i++) {
+    const d = durPista(i);
+    const lleno = d ? Math.max(0, Math.min(1, (tiempo - inicio) / d)) : 0;
+    segs[i].firstChild.style.width = (lleno * 100) + "%";
+    segs[i].classList.toggle("actual", tiempo >= inicio && (tiempo < inicio + d || i === segs.length - 1));
+    inicio += d;
+  }
 }
 
 function actualizarTiempo() {
@@ -406,7 +439,7 @@ function actualizarTiempo() {
   const pos = inicioPista(estado.pista) + (audio.currentTime || 0);
   if (!arrastrando) {
     $("t-actual").textContent = hhmmss(pos);
-    pintarBarra(total ? Math.round(pos / total * 10000) : 0);
+    pintarBarra(tiempoAFraccion(pos), pos);
   }
   $("t-total").textContent = "-" + hhmmss(Math.max(0, total - pos));
   const pct = estado.libro.terminado ? 100 : (total ? Math.floor(pos / total * 100) : 0);
@@ -484,15 +517,15 @@ const barra = $("barra-tiempo");
 barra.addEventListener("input", () => {
   if (!estado.libro) return;
   arrastrando = true;
-  const t = (barra.value / 10000) * totalLibro();
+  const t = fraccionATiempo(barra.value / 10000);
   const u = ubicar(t);
   $("t-actual").textContent = hhmmss(t);
   $("capitulo-actual").textContent = `${u.pista + 1} de ${estado.libro.pistas.length} · ${estado.libro.pistas[u.pista].nombre}`;
-  pintarBarra(barra.value);
+  pintarBarra(barra.value / 10000, t);
 });
 barra.addEventListener("change", async () => {
   if (!estado.libro) return;
-  const u = ubicar((barra.value / 10000) * totalLibro());
+  const u = ubicar(fraccionATiempo(barra.value / 10000));
   if (u.pista === estado.pista) audio.currentTime = u.tiempo;
   else await cargarPista(u.pista, u.tiempo, !audio.paused);
   arrastrando = false;
@@ -546,3 +579,5 @@ mostrarBiblioteca();
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
+
+window.addEventListener("resize", () => { if (estado.libro && !$("vista-reproductor").hidden) actualizarTiempo(); });
