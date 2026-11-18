@@ -34,11 +34,18 @@
 
   <!-- Reproductor -->
   <main id="vista-reproductor" class="vista" hidden>
-    <div class="portada" id="portada" aria-hidden="true"></div>
+    <button class="portada" id="portada" aria-label="Cambiar la portada">
+      <span id="portada-letras"></span>
+      <span class="portada-cambiar">Toca para elegir portada</span>
+    </button>
+    <input id="entrada-portada" type="file" accept="image/*" hidden>
     <p class="capitulo-actual" id="capitulo-actual"></p>
 
     <div class="progreso">
-      <input id="barra-tiempo" type="range" min="0" max="1000" value="0" aria-label="Posición en el capítulo">
+      <div class="pista-libro">
+        <div id="segmentos" class="segmentos" aria-hidden="true"></div>
+        <input id="barra-tiempo" type="range" min="0" max="10000" value="0" aria-label="Posición en el libro">
+      </div>
       <div class="tiempos"><span id="t-actual">0:00</span><span id="t-total">0:00</span></div>
     </div>
 
@@ -58,8 +65,18 @@
     </div>
 
     <div class="opciones">
-      <button id="btn-velocidad" class="chip">Velocidad 1×</button>
-      <button id="btn-dormir" class="chip">Dormir: no</button>
+      <button id="btn-velocidad" class="opcion" aria-label="Cambiar velocidad">
+        <svg viewBox="0 0 24 24"><path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l4-5"/><circle cx="12" cy="13" r="1.2"/></svg>
+        <span id="txt-velocidad">1×</span>
+      </button>
+      <div class="total" aria-label="Avance del libro">
+        <span id="pct-total" class="pct-grande">0%</span>
+        <span class="nota">del libro</span>
+      </div>
+      <button id="btn-dormir" class="opcion" aria-label="Temporizador para dormir">
+        <svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+        <span id="txt-dormir">No</span>
+      </button>
     </div>
 
     <h2 class="sub">Capítulos</h2>

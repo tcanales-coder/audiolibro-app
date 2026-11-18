@@ -190,6 +190,8 @@ async function mostrarBiblioteca() {
   $("btn-volver").hidden = true;
   $("titulo-barra").textContent = "Mis audiolibros";
 
+  for (const u of urlsPortada.values()) URL.revokeObjectURL(u);
+  urlsPortada.clear();
   const libros = (await BD.libros()).sort((a, b) => (b.abierto || b.creado) - (a.abierto || a.creado));
   const ul = $("lista-libros");
   ul.innerHTML = "";
@@ -208,6 +210,8 @@ async function mostrarBiblioteca() {
       </span>
       <span class="pct">${pct}%</span>`;
     b.querySelector(".t").textContent = l.titulo;
+    const url = await urlPortada(l);
+    if (url) { const m = b.querySelector(".mini"); fondoPortada(m, l, url); m.textContent = ""; }
     b.onclick = () => abrirLibro(l.id);
     li.appendChild(b);
     ul.appendChild(li);
@@ -223,6 +227,52 @@ async function mostrarEspacio() {
   } catch { $("nota-espacio").textContent = ""; }
 }
 
+// ---------- portadas ----------
+const urlsPortada = new Map();   // idArchivo -> objectURL
+async function urlPortada(l) {
+  if (!l.portadaId) return null;
+  if (!urlsPortada.has(l.portadaId)) {
+    const blob = await BD.archivo(l.portadaId);
+    if (!blob) return null;
+    urlsPortada.set(l.portadaId, URL.createObjectURL(blob));
+  }
+  return urlsPortada.get(l.portadaId);
+}
+function fondoPortada(el, l, url) {
+  el.style.background = url ? `center / cover no-repeat url("${url}")` : colorPortada(l.titulo);
+}
+async function pintarPortada() {
+  const l = estado.libro, el = $("portada");
+  const url = await urlPortada(l);
+  fondoPortada(el, l, url);
+  $("portada-letras").textContent = url ? "" : iniciales(l.titulo);
+  el.classList.toggle("con-imagen", !!url);
+}
+// reduce la foto a 800 px para no ocupar espacio de más
+async function reducirImagen(archivo, max = 800) {
+  const bmp = await createImageBitmap(archivo);
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(ok => c.toBlob(ok, "image/jpeg", 0.85));
+}
+async function cambiarPortada(archivo) {
+  const l = estado.libro;
+  if (!l || !archivo) return;
+  let blob;
+  try { blob = await reducirImagen(archivo); }
+  catch { avisar("No pude abrir esa imagen. Prueba con una foto JPG o PNG."); return; }
+  const anterior = l.portadaId;
+  l.portadaId = uid();
+  await BD.guardarArchivo(l.portadaId, blob);
+  await BD.guardarLibro(l);
+  if (anterior) { await BD.borrarArchivo(anterior); urlsPortada.delete(anterior); }
+  await pintarPortada();
+  actualizarMediaSession();
+  avisar("Portada guardada");
+}
+
 // ---------- reproductor ----------
 async function abrirLibro(id) {
   const l = await BD.libro(id);
@@ -235,9 +285,7 @@ async function abrirLibro(id) {
   $("vista-reproductor").hidden = false;
   $("btn-volver").hidden = false;
   $("titulo-barra").textContent = l.titulo;
-  const portada = $("portada");
-  portada.style.background = colorPortada(l.titulo);
-  portada.textContent = iniciales(l.titulo);
+  await pintarPortada();
 
   const ol = $("lista-capitulos");
   ol.innerHTML = "";
@@ -252,6 +300,8 @@ async function abrirLibro(id) {
   });
 
   await cargarPista(l.pos.pista || 0, l.pos.tiempo || 0, false);
+  pintarSegmentos();
+  actualizarTiempo();
   window.scrollTo(0, 0);
 }
 
@@ -268,6 +318,10 @@ async function cargarPista(i, tiempo, reproducir) {
   await new Promise(ok => { audio.onloadedmetadata = ok; audio.onerror = ok; });
   audio.playbackRate = estado.velocidad;
   if (tiempo > 0 && tiempo < (audio.duration || Infinity) - 1) audio.currentTime = tiempo;
+  if (isFinite(audio.duration) && Math.abs((l.pistas[i].duracion || 0) - audio.duration) > 1) {
+    l.pistas[i].duracion = audio.duration;     // corrige duraciones que no se pudieron leer al importar
+    pintarSegmentos();
+  }
 
   $("capitulo-actual").textContent = `${i + 1} de ${l.pistas.length} · ${l.pistas[i].nombre}`;
   [...$("lista-capitulos").children].forEach((li, k) => li.classList.toggle("activo", k === i));
@@ -309,18 +363,61 @@ async function guardarPosicion(forzar = false) {
   try { await BD.guardarLibro(l); } catch {}
 }
 
+// ----- línea de tiempo del libro completo -----
+function durPista(i) {
+  const l = estado.libro;
+  if (i === estado.pista && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
+  return l.pistas[i].duracion || 0;
+}
+function inicioPista(i) { let s = 0; for (let k = 0; k < i; k++) s += durPista(k); return s; }
+function totalLibro() { return inicioPista(estado.libro.pistas.length); }
+// tiempo del libro -> {pista, tiempo dentro del capítulo}
+function ubicar(t) {
+  const n = estado.libro.pistas.length;
+  for (let i = 0; i < n; i++) {
+    const d = durPista(i);
+    if (t < d || i === n - 1) return { pista: i, tiempo: Math.max(0, Math.min(t, d - 0.5)) };
+    t -= d;
+  }
+  return { pista: 0, tiempo: 0 };
+}
+
+function pintarSegmentos() {
+  const cont = $("segmentos");
+  cont.innerHTML = "";
+  const total = totalLibro();
+  if (!total) return;
+  for (let i = 1; i < estado.libro.pistas.length; i++) {
+    const m = document.createElement("span");
+    m.style.left = (inicioPista(i) / total * 100) + "%";
+    cont.appendChild(m);
+  }
+}
+
+function pintarBarra(valor) {
+  const b = $("barra-tiempo");
+  b.value = valor;
+  b.style.setProperty("--p", (valor / 100) + "%");
+}
+
 function actualizarTiempo() {
-  const d = audio.duration || estado.libro?.pistas[estado.pista]?.duracion || 0;
-  $("t-actual").textContent = hhmmss(audio.currentTime);
-  $("t-total").textContent = "-" + hhmmss(Math.max(0, d - audio.currentTime));
-  if (!arrastrando) $("barra-tiempo").value = d ? Math.round((audio.currentTime / d) * 1000) : 0;
-  $("barra-tiempo").style.setProperty("--p", ($("barra-tiempo").value / 10) + "%");
+  if (!estado.libro) return;
+  const total = totalLibro();
+  const pos = inicioPista(estado.pista) + (audio.currentTime || 0);
+  if (!arrastrando) {
+    $("t-actual").textContent = hhmmss(pos);
+    pintarBarra(total ? Math.round(pos / total * 10000) : 0);
+  }
+  $("t-total").textContent = "-" + hhmmss(Math.max(0, total - pos));
+  const pct = estado.libro.terminado ? 100 : (total ? Math.floor(pos / total * 100) : 0);
+  $("pct-total").textContent = pct + "%";
 }
 
 function actualizarBotonPlay() {
   const pausado = audio.paused;
-  $("ico-play").hidden = !pausado;
-  $("ico-pausa").hidden = pausado;
+  // en un <svg> la propiedad .hidden no existe; hay que cambiar el atributo
+  $("ico-play").toggleAttribute("hidden", !pausado);
+  $("ico-pausa").toggleAttribute("hidden", pausado);
   $("btn-play").setAttribute("aria-label", pausado ? "Reproducir" : "Pausar");
   if ("mediaSession" in navigator) navigator.mediaSession.playbackState = pausado ? "paused" : "playing";
 }
@@ -332,7 +429,9 @@ function actualizarMediaSession() {
     title: l.pistas[estado.pista].nombre,
     artist: l.titulo,
     album: l.titulo,
-    artwork: [{ src: "icons/icon-512.png", sizes: "512x512", type: "image/png" }],
+    artwork: l.portadaId && urlsPortada.get(l.portadaId)
+      ? [{ src: urlsPortada.get(l.portadaId), sizes: "800x800", type: "image/jpeg" }]
+      : [{ src: "icons/icon-512.png", sizes: "512x512", type: "image/png" }],
   });
   const ms = navigator.mediaSession;
   const h = (acc, fn) => { try { ms.setActionHandler(acc, fn); } catch {} };
@@ -354,7 +453,7 @@ function cambiarVelocidad() {
   pintarVelocidad();
 }
 function pintarVelocidad() {
-  $("btn-velocidad").textContent = `Velocidad ${String(estado.velocidad).replace(".", ",")}×`;
+  $("txt-velocidad").textContent = `${String(estado.velocidad).replace(".", ",")}×`;
 }
 function cambiarDormir() {
   estado.dormirIdx = (estado.dormirIdx + 1) % DORMIR.length;
@@ -364,10 +463,10 @@ function cambiarDormir() {
 }
 function pintarDormir() {
   const m = DORMIR[estado.dormirIdx];
-  let t = "Dormir: no";
-  if (m === -1) t = "Dormir: fin del capítulo";
-  else if (m > 0) t = `Dormir: ${Math.max(1, Math.ceil((estado.dormirHasta - Date.now()) / 60000))} min`;
-  $("btn-dormir").textContent = t;
+  let t = "No";
+  if (m === -1) t = "Fin cap.";
+  else if (m > 0) t = `${Math.max(1, Math.ceil((estado.dormirHasta - Date.now()) / 60000))} min`;
+  $("txt-dormir").textContent = t;
   $("btn-dormir").classList.toggle("activo", m !== 0);
 }
 setInterval(() => {
@@ -383,15 +482,21 @@ setInterval(() => {
 let arrastrando = false;
 const barra = $("barra-tiempo");
 barra.addEventListener("input", () => {
+  if (!estado.libro) return;
   arrastrando = true;
-  const d = audio.duration || 0;
-  $("t-actual").textContent = hhmmss((barra.value / 1000) * d);
-  barra.style.setProperty("--p", (barra.value / 10) + "%");
+  const t = (barra.value / 10000) * totalLibro();
+  const u = ubicar(t);
+  $("t-actual").textContent = hhmmss(t);
+  $("capitulo-actual").textContent = `${u.pista + 1} de ${estado.libro.pistas.length} · ${estado.libro.pistas[u.pista].nombre}`;
+  pintarBarra(barra.value);
 });
-barra.addEventListener("change", () => {
-  const d = audio.duration || 0;
-  if (d) audio.currentTime = (barra.value / 1000) * d;
+barra.addEventListener("change", async () => {
+  if (!estado.libro) return;
+  const u = ubicar((barra.value / 10000) * totalLibro());
+  if (u.pista === estado.pista) audio.currentTime = u.tiempo;
+  else await cargarPista(u.pista, u.tiempo, !audio.paused);
   arrastrando = false;
+  actualizarTiempo();
 });
 
 audio.addEventListener("timeupdate", () => { actualizarTiempo(); guardarPosicion(); });
@@ -417,6 +522,8 @@ $("btn-siguiente").onclick = siguiente;
 $("btn-velocidad").onclick = cambiarVelocidad;
 $("btn-dormir").onclick = cambiarDormir;
 $("btn-volver").onclick = () => { guardarPosicion(true); mostrarBiblioteca(); };
+$("portada").onclick = () => $("entrada-portada").click();
+$("entrada-portada").onchange = e => { const f = e.target.files[0]; e.target.value = ""; cambiarPortada(f); };
 $("btn-agregar").onclick = () => $("entrada-archivos").click();
 $("entrada-archivos").onchange = e => { const f = [...e.target.files]; e.target.value = ""; importar(f); };
 $("btn-borrar").onclick = () => {

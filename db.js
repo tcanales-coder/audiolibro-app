@@ -38,9 +38,11 @@ const BD = (() => {
     guardarLibro: libro => tx(["libros"], "readwrite", t => { t.objectStore("libros").put(libro); }),
     archivo: id => tx(["archivos"], "readonly", t => pedir(t.objectStore("archivos").get(id))).then(r => r && r.blob),
     guardarArchivo: (id, blob) => tx(["archivos"], "readwrite", t => { t.objectStore("archivos").put({ id, blob }); }),
+    borrarArchivo: id => tx(["archivos"], "readwrite", t => { t.objectStore("archivos").delete(id); }),
     borrarLibro: libro => tx(["libros", "archivos"], "readwrite", t => {
       t.objectStore("libros").delete(libro.id);
       for (const p of libro.pistas) t.objectStore("archivos").delete(p.idArchivo);
+      if (libro.portadaId) t.objectStore("archivos").delete(libro.portadaId);
     }),
   };
 })();

@@ -97,24 +97,38 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
 
 /* Reproductor */
 .portada {
-  width: min(62vw, 240px); aspect-ratio: 1; margin: 8px auto 16px; border-radius: 22px;
-  display: grid; place-items: center; color: #fff; font-size: 3.2rem; font-weight: 700;
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  width: min(62vw, 240px); aspect-ratio: 1; margin: 8px auto 16px; padding: 0; border: 0; border-radius: 22px;
+  color: #fff; font-size: 3.2rem; font-weight: 700;
   box-shadow: 0 12px 30px rgb(0 0 0 / .18);
 }
+.portada-cambiar {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 8px;
+  font-size: .78rem; font-weight: 500; background: rgb(0 0 0 / .28);
+}
+.portada.con-imagen .portada-cambiar { opacity: 0; }
+.portada.con-imagen:hover .portada-cambiar, .portada.con-imagen:focus-visible .portada-cambiar { opacity: 1; }
 .capitulo-actual { text-align: center; margin: 0 0 12px; font-weight: 600; min-height: 1.45em; }
+.pista-libro { position: relative; }
+.segmentos { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.segmentos span {
+  position: absolute; top: 50%; width: 3px; height: 8px; margin-left: -1.5px; transform: translateY(-50%);
+  background: var(--fondo); border-radius: 1px;
+}
 .progreso input[type=range] {
+  position: relative;
   --p: 0%;
   width: 100%; height: 28px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none;
 }
 .progreso input[type=range]::-webkit-slider-runnable-track {
-  height: 6px; border-radius: 6px;
+  height: 8px; border-radius: 6px;
   background: linear-gradient(to right, var(--acento) var(--p), var(--linea) var(--p));
 }
 .progreso input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; border-radius: 50%; background: var(--acento); border: 0;
+  -webkit-appearance: none; width: 20px; height: 20px; margin-top: -6px; border-radius: 50%; background: var(--acento); border: 0;
 }
-.progreso input[type=range]::-moz-range-track { height: 6px; border-radius: 6px; background: var(--linea); }
-.progreso input[type=range]::-moz-range-progress { height: 6px; border-radius: 6px; background: var(--acento); }
+.progreso input[type=range]::-moz-range-track { height: 8px; border-radius: 6px; background: var(--linea); }
+.progreso input[type=range]::-moz-range-progress { height: 8px; border-radius: 6px; background: var(--acento); }
 .progreso input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--acento); border: 0; }
 .tiempos { display: flex; justify-content: space-between; color: var(--suave); font-size: .85rem; font-variant-numeric: tabular-nums; }
 
@@ -126,7 +140,16 @@ button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-c
 .play svg { width: 32px; height: 32px; fill: currentColor; }
 #ico-pausa { fill: none; stroke-width: 3.2; }
 
-.opciones { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 10px 0 4px; }
+.opciones { display: flex; align-items: center; justify-content: space-between; margin: 12px 0 4px; }
+.opcion {
+  display: grid; justify-items: center; gap: 2px; min-width: 76px; padding: 8px 6px;
+  background: none; border: 0; border-radius: 14px; color: var(--suave); font-size: .85rem;
+}
+.opcion svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.opcion.activo { color: var(--acento); font-weight: 600; }
+.opcion:active { background: color-mix(in srgb, var(--texto) 8%, transparent); }
+.total { display: grid; justify-items: center; line-height: 1.15; }
+.pct-grande { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--acento); }
 
 .sub { font-size: 1rem; margin: 26px 0 8px; color: var(--suave); font-weight: 600; }
 .capitulos { list-style: none; margin: 0; padding: 0; border: 1px solid var(--linea); border-radius: 16px; overflow: hidden; background: var(--superficie); }
