@@ -120,14 +120,39 @@
     </div>
     <article id="texto-contenido" class="texto-contenido"></article>
     <input id="entrada-epub" type="file" accept=".epub,application/epub+zip" hidden>
-    <div class="texto-pie">
-      <button id="btn-cerrar-texto" class="chip">Cerrar texto</button>
-      <button id="btn-play-texto" class="play chico" aria-label="Reproducir o pausar">
-        <svg id="ico-play-t" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
-        <svg id="ico-pausa-t" viewBox="0 0 24 24" hidden><path d="M8 5v14M16 5v14"/></svg>
-      </button>
+    <div id="zona-brillo" class="zona-brillo" aria-hidden="true"></div>
+    <!-- Controles de lectura: aparecen con un toque en el texto -->
+    <div id="texto-controles" class="texto-controles" hidden>
+      <div class="fila-cap">
+        <button id="btn-cap-ant" class="icono" aria-label="Capítulo anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <p id="nombre-cap-lectura" class="nombre-cap"></p>
+        <button id="btn-cap-sig" class="icono" aria-label="Capítulo siguiente"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div id="hueco-progreso"></div>
+      <div id="fila-tamano" class="fila-tamano" hidden>
+        <button id="btn-letra-menos" class="chip" aria-label="Letra más chica">A−</button>
+        <span id="txt-tamano">100%</span>
+        <button id="btn-letra-mas" class="chip" aria-label="Letra más grande">A+</button>
+      </div>
+      <div class="fila-herramientas">
+        <button id="btn-tamano" class="icono texto" aria-label="Tamaño del texto">Aa</button>
+        <button id="btn-noche" class="icono" aria-label="Modo noche"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
+        <button id="btn-play-texto" class="play chico" aria-label="Reproducir o pausar">
+          <svg id="ico-play-t" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
+          <svg id="ico-pausa-t" viewBox="0 0 24 24" hidden><path d="M8 5v14M16 5v14"/></svg>
+        </button>
+        <button id="btn-cerrar-texto" class="icono" aria-label="Cerrar texto"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
     </div>
   </section>
+
+  <!-- Brillo de lectura: se ajusta deslizando por el borde izquierdo -->
+  <div id="oscurecer" class="oscurecer" aria-hidden="true"></div>
+  <div id="indicador-brillo" class="indicador-brillo" aria-hidden="true" hidden>
+    <svg class="sol grande" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg>
+    <div class="riel"><span id="nivel-brillo"></span></div>
+    <svg class="sol chico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 5v1.5M12 17.5V19M5 12h1.5M17.5 12H19"/></svg>
+  </div>
 
   <div id="aviso" class="aviso" role="status" aria-live="polite" hidden></div>
   <audio id="audio" preload="metadata"></audio>

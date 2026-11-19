@@ -195,15 +195,43 @@ body.sin-scroll { overflow: hidden; }
 .texto-contenido p { margin: 0 0 1em; }
 .frase { border-radius: 4px; transition: background-color .25s, color .25s; cursor: pointer; }
 .frase.leyendo { background: color-mix(in srgb, var(--acento) 22%, transparent); color: var(--texto); }
-.texto-pie {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--fondo) 70%, transparent);
-}
 .play.chico { width: 56px; height: 56px; }
 .play.chico svg { width: 24px; height: 24px; }
+
+.texto-contenido { font-size: calc(1.15rem * var(--tam, 1)); }
+.texto-controles {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--superficie) 96%, transparent);
+  border-top: 1px solid var(--linea); box-shadow: 0 -8px 24px rgb(0 0 0 / .12);
+}
+.texto-controles .progreso { margin: 0 4px; }
+.fila-cap { display: flex; align-items: center; gap: 4px; }
+.nombre-cap { flex: 1; min-width: 0; margin: 0; text-align: center; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fila-herramientas { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.fila-tamano { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+
+/* Modo noche de lectura */
+.panel-texto.noche { --fondo: #0e0c10; --texto: #b8ae9f; --suave: #7c7469; --linea: #262028; --superficie: #17141a; --acento: #b48ad6; --acento-texto: #120e15; }
+.panel-texto.noche, .panel-texto.noche .texto-cabecera { background: var(--fondo); color: var(--texto); }
+.panel-texto.noche .frase.leyendo { background: color-mix(in srgb, var(--acento) 26%, transparent); color: #e4dccf; }
+
+/* Brillo */
+.oscurecer { position: fixed; inset: 0; z-index: 20; background: #000; opacity: 0; pointer-events: none; }
+.indicador-brillo {
+  position: fixed; left: 18px; top: 50%; transform: translateY(-50%); z-index: 21;
+  display: grid; justify-items: center; gap: 10px; pointer-events: none; color: #fff;
+  opacity: .75; transition: opacity .3s; filter: drop-shadow(0 1px 3px rgb(0 0 0 / .6));
+}
+.indicador-brillo.saliendo { opacity: 0; }
+.sol { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.sol.grande { width: 30px; height: 30px; }
+.sol.chico { width: 20px; height: 20px; }
+.riel { position: relative; width: 6px; height: 180px; border-radius: 3px; background: rgb(255 255 255 / .3); overflow: hidden; }
+.riel span { position: absolute; left: 0; right: 0; bottom: 0; background: rgb(255 255 255 / .9); border-radius: 3px; }
+
 .texto-contenido h3 { font-family: system-ui, sans-serif; font-size: 1.2rem; margin: 1.6em 0 .8em; }
 .cap-epub + .cap-epub { border-top: 1px solid var(--linea); padding-top: .6em; }
 .sin-epub { font-family: system-ui, sans-serif; font-size: 1rem; text-align: center; padding-top: 24px; color: var(--suave); }
 .cambiar-epub { display: block; margin: 24px auto 0; font-family: system-ui, sans-serif; }
+.zona-brillo { position: fixed; left: 0; width: 16vw; top: calc(72px + env(safe-area-inset-top)); bottom: 0; z-index: 5; touch-action: none; }

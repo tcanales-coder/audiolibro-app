@@ -344,6 +344,7 @@ async function cargarPista(i, tiempo, reproducir) {
   actualizarTiempo();
   actualizarMediaSession();
   guardarPosicion(true);
+  seguirTexto();                          // si el texto está abierto, pasa al capítulo nuevo
   if (reproducir) audio.play().catch(() => {});
 }
 
@@ -502,6 +503,9 @@ const tieneTexto = l => !!l && l.pistas.some(p => p.frases && p.frases.length);
 function abrirTexto() {
   $("panel-texto").hidden = false;
   document.body.classList.add("sin-scroll");
+  $("hueco-progreso").appendChild(document.querySelector(".progreso"));   // la misma barra del reproductor
+  mostrarControles(false);
+  aplicarPreferenciasLectura();
   lectura.pista = -1;
   lectura.libre = !tieneTexto(estado.libro);
   if (lectura.libre) pintarEpubLibre(); else pintarTexto();
@@ -599,6 +603,117 @@ async function pintarEpubLibre() {
 function cerrarTexto() {
   $("panel-texto").hidden = true;
   document.body.classList.remove("sin-scroll");
+  $("oscurecer").style.opacity = 0;
+  const prog = document.querySelector(".progreso");
+  if (prog && prog.parentElement.id === "hueco-progreso") {
+    $("vista-reproductor").insertBefore(prog, document.querySelector(".controles"));
+    if (estado.libro) actualizarTiempo();
+  }
+}
+
+// ----- controles de lectura (aparecen con un toque) -----
+function mostrarControles(ver) {
+  $("texto-controles").hidden = !ver;
+  if (!ver) $("fila-tamano").hidden = true;
+  if (ver) { actualizarTiempo(); pintarNombreCapLectura(); }
+}
+function seccionesEpub() { return [...$("texto-contenido").querySelectorAll(".cap-epub")]; }
+function seccionVisible() {
+  const panel = $("panel-texto"), secs = seccionesEpub(), y = panel.scrollTop + 90;
+  let i = 0;
+  secs.forEach((sec, k) => { if (sec.offsetTop <= y) i = k; });
+  return i;
+}
+function pintarNombreCapLectura() {
+  const l = estado.libro;
+  if (!l) return;
+  if (!lectura.libre) {
+    $("nombre-cap-lectura").textContent = `${estado.pista + 1}. ${l.pistas[estado.pista].nombre}`;
+    return;
+  }
+  const secs = seccionesEpub();
+  if (!secs.length) { $("nombre-cap-lectura").textContent = ""; return; }
+  const i = seccionVisible();
+  const h = secs[i].querySelector("h3");
+  $("nombre-cap-lectura").textContent = h ? h.textContent : `Parte ${i + 1} de ${secs.length}`;
+}
+function cambiarCapLectura(paso) {
+  if (!lectura.libre) {
+    const i = estado.pista + paso;
+    if (i >= 0 && i < estado.libro.pistas.length) cargarPista(i, 0, !audio.paused);
+    return;
+  }
+  const secs = seccionesEpub();
+  const i = Math.max(0, Math.min(secs.length - 1, seccionVisible() + paso));
+  if (secs[i]) $("panel-texto").scrollTop = secs[i].offsetTop - 70;
+  setTimeout(pintarNombreCapLectura, 50);
+}
+
+// ----- tamaño de letra y modo noche -----
+const TAMANOS = [0.8, 0.9, 1, 1.12, 1.25, 1.4, 1.6];
+function aplicarPreferenciasLectura() {
+  const tam = leerPref("tamanoLetra", 1);
+  $("texto-contenido").style.setProperty("--tam", tam);
+  $("txt-tamano").textContent = Math.round(tam * 100) + "%";
+  const noche = leerPref("lecturaNoche", false);
+  $("panel-texto").classList.toggle("noche", noche);
+  $("btn-noche").classList.toggle("activo", noche);
+  aplicarBrillo(leerPref("brilloLectura", 1));
+}
+function cambiarTamano(paso) {
+  const actual = leerPref("tamanoLetra", 1);
+  let i = TAMANOS.indexOf(actual); if (i < 0) i = 2;
+  i = Math.max(0, Math.min(TAMANOS.length - 1, i + paso));
+  guardarPref("tamanoLetra", TAMANOS[i]);
+  aplicarPreferenciasLectura();
+  if (!lectura.libre) seguirTexto(true);
+}
+
+// ----- brillo: deslizar por el borde izquierdo -----
+// El navegador no puede cambiar el brillo real del teléfono; se oscurece la pantalla por encima.
+function aplicarBrillo(b) {
+  b = Math.max(0.15, Math.min(1, b));
+  $("oscurecer").style.opacity = $("panel-texto").hidden ? 0 : ((1 - b) * 0.85).toFixed(3);
+  $("nivel-brillo").style.height = (((b - 0.15) / 0.85) * 100) + "%";
+  return b;
+}
+const gestoBrillo = { id: null, movio: false, y0: 0, b0: 1, ocultar: 0 };
+function iniciarGestosLectura() {
+  const panel = $("panel-texto"), zona = $("zona-brillo");
+  // la franja izquierda no desplaza el texto (touch-action: none): ahí el dedo ajusta el brillo
+  zona.addEventListener("pointerdown", e => {
+    gestoBrillo.id = e.pointerId; gestoBrillo.movio = false;
+    gestoBrillo.y0 = e.clientY; gestoBrillo.b0 = leerPref("brilloLectura", 1);
+    zona.setPointerCapture(e.pointerId);
+  });
+  zona.addEventListener("pointermove", e => {
+    if (e.pointerId !== gestoBrillo.id) return;
+    const dy = e.clientY - gestoBrillo.y0;
+    if (!gestoBrillo.movio) {
+      if (Math.abs(dy) < 8) return;
+      gestoBrillo.movio = true;
+      clearTimeout(gestoBrillo.ocultar);
+      const ind = $("indicador-brillo"); ind.hidden = false; ind.classList.remove("saliendo");
+    }
+    guardarPref("brilloLectura", aplicarBrillo(gestoBrillo.b0 - dy / 260));   // hacia arriba = más brillo
+  });
+  const soltar = e => {
+    if (e.pointerId !== gestoBrillo.id) return;
+    gestoBrillo.id = null;
+    if (!gestoBrillo.movio) { mostrarControles($("texto-controles").hidden); return; }   // fue un toque
+    gestoBrillo.ocultar = setTimeout(() => {
+      const ind = $("indicador-brillo"); ind.classList.add("saliendo");
+      setTimeout(() => { ind.hidden = true; }, 300);
+    }, 1000);
+  };
+  zona.addEventListener("pointerup", soltar);
+  zona.addEventListener("pointercancel", soltar);
+
+  // un toque en el texto muestra u oculta los controles
+  panel.addEventListener("click", e => {
+    if (e.target.closest("button, input, .texto-controles, .zona-brillo")) return;
+    mostrarControles($("texto-controles").hidden);
+  });
 }
 function pintarTexto() {
   const l = estado.libro, p = l.pistas[estado.pista];
@@ -615,7 +730,7 @@ function pintarTexto() {
     const s = document.createElement("span");
     s.className = "frase";
     s.textContent = f.texto + " ";
-    s.onclick = () => { audio.currentTime = f.t; if (audio.paused) audio.play().catch(() => {}); lectura.manualHasta = 0; };
+    s.ondblclick = e => { e.preventDefault(); audio.currentTime = f.t; if (audio.paused) audio.play().catch(() => {}); lectura.manualHasta = 0; };
     parrafo.appendChild(s);
     lectura.spans.push(s);
     // un fragmento que termina en punto final y el siguiente parte con mayúscula: posible fin de párrafo
@@ -627,7 +742,7 @@ function pintarTexto() {
 }
 function seguirTexto(forzar = false) {
   if ($("panel-texto").hidden || !estado.libro || lectura.libre) return;
-  if (lectura.pista !== estado.pista) return pintarTexto();
+  if (lectura.pista !== estado.pista) { pintarNombreCapLectura(); return pintarTexto(); }
   const frases = estado.libro.pistas[estado.pista].frases;
   if (!frases || !frases.length) return;
   const t = audio.currentTime;
@@ -726,10 +841,18 @@ $("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value 
 let guardadoScroll;
 $("panel-texto").addEventListener("scroll", () => {
   if (!lectura.libre || !estado.libro?.epubId) return;
+  if (!$("texto-controles").hidden) pintarNombreCapLectura();
   clearTimeout(guardadoScroll);
   guardadoScroll = setTimeout(() => { estado.libro.lecturaScroll = $("panel-texto").scrollTop; BD.guardarLibro(estado.libro).catch(() => {}); }, 600);
 }, { passive: true });
 $("btn-play-texto").onclick = alternar;
+$("btn-cap-ant").onclick = () => cambiarCapLectura(-1);
+$("btn-cap-sig").onclick = () => cambiarCapLectura(1);
+$("btn-tamano").onclick = () => { $("fila-tamano").hidden = !$("fila-tamano").hidden; };
+$("btn-letra-menos").onclick = () => cambiarTamano(-1);
+$("btn-letra-mas").onclick = () => cambiarTamano(1);
+$("btn-noche").onclick = () => { guardarPref("lecturaNoche", !leerPref("lecturaNoche", false)); aplicarPreferenciasLectura(); };
+iniciarGestosLectura();
 // si la persona desplaza el texto con el dedo, no se lo movemos por 6 segundos
 ["touchmove", "wheel"].forEach(ev => $("panel-texto").addEventListener(ev, () => { lectura.manualHasta = Date.now() + 6000; }, { passive: true }));
 $("portada").onclick = () => $("entrada-portada").click();
