@@ -35,22 +35,54 @@ const KAGGLE = (() => {
     let datos = null;
     try { datos = texto ? JSON.parse(texto) : {}; } catch { datos = { mensaje: texto }; }
     if (!r.ok || (datos && datos.code >= 400)) {
-      let msg = (datos && (datos.message || datos.error || datos.mensaje)) || "";
+      let msg = textoError(datos);
       if (/^\s*</.test(msg)) msg = "respuesta en HTML: " + (msg.match(/<title>([^<]*)/i) || [, "página web"])[1].trim();
-      msg = `HTTP ${r.status}${msg ? " · " + String(msg).slice(0, 160) : ""}`;
-      const e = new Error(r.status === 401 || r.status === 403 ? "Kaggle no aceptó la clave (" + msg + ")" : msg);
+      msg = `HTTP ${r.status}${msg ? " · " + msg.slice(0, 200) : ""}`;
+      const e = new Error(
+        r.status === 401 ? "Kaggle no aceptó la clave (" + msg + ")" :
+        r.status === 403 ? `Kaggle no dio permiso en el paso ${metodo} (${msg})` :
+        `${metodo}: ${msg}`);
       e.status = r.status;
       throw e;
     }
-    if (datos && datos.error) throw new Error(datos.error);
+    if (datos && datos.error) throw new Error(`${metodo}: ${textoError(datos.error)}`);
     return datos;
+  }
+  // Kaggle a veces manda el error como texto y a veces como objeto ({code, message, status, details})
+  function textoError(x) {
+    if (x == null) return "";
+    if (typeof x === "string") return x;
+    if (typeof x !== "object") return String(x);
+    const dentro = x.error && typeof x.error === "object" ? x.error : null;
+    if (dentro) return textoError(dentro);
+    const partes = [x.message || x.mensaje || (typeof x.error === "string" ? x.error : ""), x.status && x.status !== x.message ? x.status : ""].filter(Boolean);
+    return partes.length ? partes.join(" · ") : JSON.stringify(x).slice(0, 200);
   }
   const viaIntermediario = url => `${intermediario()}/archivo?url=${encodeURIComponent(url)}`;
 
+  // Con los tokens nuevos (KGAT_), el usuario real se le pregunta a Kaggle, igual que hace su
+  // programa oficial. Así no importa si la persona escribió mal su usuario (mayúsculas, su nombre
+  // visible, etc.): todo lo que se crea queda bajo el dueño correcto.
+  async function confirmarUsuario() {
+    const a = ajustes();
+    if (!/^KGAT_/.test(a.clave || "")) return a.usuario;
+    let r;
+    try { r = await api("security.OAuthService", "IntrospectToken", { token: a.clave }); }
+    catch (e) {
+      if (e.status === 401) throw new Error("Kaggle no aceptó la clave. Genera un token nuevo y pégalo completo.");
+      if (a.usuario) return a.usuario;      // si Kaggle no responde a esto, seguimos con lo escrito
+      throw e;
+    }
+    if (!r.active || !r.username) throw new Error("Esa clave está vencida o fue borrada. Genera un token nuevo en Kaggle.");
+    if (r.username !== a.usuario) guardarAjustes({ ...a, usuario: r.username });
+    return r.username;
+  }
+
   async function probar() {
-    // una consulta liviana para confirmar usuario y clave
-    await api("kernels.KernelsApiService", "ListKernels", { user: ajustes().usuario, pageSize: 1 });
-    return true;
+    const usuario = await confirmarUsuario();
+    // una consulta liviana para confirmar que la clave sirve para la API
+    await api("kernels.KernelsApiService", "ListKernels", { user: usuario, pageSize: 1 });
+    return usuario;
   }
 
   // ---------- subir archivos y crear el dataset ----------
@@ -73,21 +105,34 @@ const KAGGLE = (() => {
 
   const esperar = ms => new Promise(ok => setTimeout(ok, ms));
 
+  // Devuelve { usuario, slug } tal como quedó en Kaggle.
   async function crearDataset(slug, titulo, archivos, avisar) {
-    const usuario = ajustes().usuario;
+    let usuario = await confirmarUsuario();
     const tokens = [];
     for (const [nombre, archivo] of archivos) {
       avisar(`Subiendo ${nombre}…`);
       tokens.push({ token: await subirArchivo(archivo, nombre) });
     }
     avisar("Creando la carpeta del libro en Kaggle…");
-    await api("datasets.DatasetApiService", "CreateDataset", {
+    const creado = await api("datasets.DatasetApiService", "CreateDataset", {
       ownerSlug: usuario, slug, title: titulo, isPrivate: true, licenseName: "unknown", files: tokens,
     });
-    // Kaggle tarda un poco en dejar listo el dataset; esperamos antes de lanzar el notebook
+    // Usar el dueño y nombre que Kaggle realmente le dio (puede diferir de lo pedido)
+    const partes = String(creado.url || creado.ref || "").replace(/^https?:\/\/[^/]+/, "")
+      .replace(/^\/?datasets\//, "").split("/").filter(Boolean);
+    if (partes.length >= 2) { usuario = partes[partes.length - 2]; slug = partes[partes.length - 1]; }
+    // Kaggle tarda un poco en dejar listo el dataset; esperamos antes de lanzar el notebook.
+    // Recién creado, a veces responde "sin permiso" o "no existe" unos segundos: eso se reintenta.
     for (let i = 0; i < 60; i++) {
-      const st = await api("datasets.DatasetApiService", "GetDatasetStatus", { ownerSlug: usuario, datasetSlug: slug });
-      if (st.status === "READY") return;
+      let st;
+      try { st = await api("datasets.DatasetApiService", "GetDatasetStatus", { ownerSlug: usuario, datasetSlug: slug }); }
+      catch (e) {
+        if ((e.status === 403 || e.status === 404) && i < 8) { avisar("Kaggle está preparando los archivos…"); await esperar(5000); continue; }
+        throw e.status === 403 || e.status === 404
+          ? new Error(`Kaggle creó la carpeta del libro pero no deja leerla (${usuario}/${slug}). Revisa en Cuenta de Kaggle que el usuario sea el tuyo.`)
+          : e;
+      }
+      if (st.status === "READY") return { usuario, slug };
       if (st.status === "FAILED") throw new Error("Kaggle no pudo procesar los archivos subidos.");
       avisar("Kaggle está preparando los archivos…");
       await esperar(5000);
@@ -96,14 +141,15 @@ const KAGGLE = (() => {
   }
 
   // ---------- notebook ----------
-  async function prepararNotebook({ epub, voz, descripcion }) {
+  // prueba=true: el notebook solo crea la voz y unos segundos del libro (prueba.wav) para escucharla
+  async function prepararNotebook({ epub, voz, descripcion }, prueba = false) {
     const nb = await (await fetch("kaggle/plantilla.ipynb", { cache: "no-cache" })).json();
     const cfg = nb.cells.find(c => c.cell_type === "code" && /PRUEBA\s*=/.test([].concat(c.source).join("")));
     let src = [].concat(cfg.source).join("");
     const linea = (nombre, valor) => {
       src = src.replace(new RegExp(`^(${nombre}\\s*=\\s*)([^#\\n]*?)(\\s*#@param.*)?$`, "m"), (_, a, __, c) => a + valor + (c || ""));
     };
-    linea("PRUEBA", "False");
+    linea("PRUEBA", prueba ? "True" : "False");
     linea("ARCHIVO_EPUB", JSON.stringify(epub));
     linea("MODO_VOZ", JSON.stringify(voz ? "clonar" : "diseñar"));
     linea("AUDIO_PARA_CLONAR", JSON.stringify(voz || ""));
@@ -176,6 +222,7 @@ const KAGGLE = (() => {
       capitulosTotales: total ? parseInt(total) : null,
       pausado: /Pausado: vuelve a ejecutar/.test(t),
       terminado: /¡Listo!/.test(t),
+      estimacionHoras: (m => m ? parseFloat(m[1]) : null)(t.match(/libro completo en esta GPU: ~([\d.]+) horas/)),
     };
   }
 
@@ -199,7 +246,7 @@ const KAGGLE = (() => {
   }
 
   return {
-    ajustes, guardarAjustes, listo, intermediario, probar, crearDataset,
+    ajustes, guardarAjustes, listo, intermediario, probar, confirmarUsuario, crearDataset,
     prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar,
   };
 })();

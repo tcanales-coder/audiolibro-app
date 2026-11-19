@@ -99,6 +99,11 @@
       <p id="gen-detalle" class="nota"></p>
       <div class="barra-gen"><span id="gen-barra"></span></div>
     </div>
+    <div id="gen-muestra" class="gen-muestra" hidden>
+      <audio id="audio-muestra" controls preload="auto"></audio>
+      <button id="btn-muestra-ok" class="boton-principal">Me gusta: generar el libro completo</button>
+      <button id="btn-muestra-otra" class="boton-secundario">Probar otra voz</button>
+    </div>
     <button id="btn-gen-actualizar" class="boton-principal">Actualizar</button>
     <button id="btn-gen-descargar" class="boton-principal" hidden>Descargar el audiolibro</button>
     <button id="btn-gen-continuar" class="boton-principal" hidden>Continuar la generación</button>
@@ -115,7 +120,7 @@
       <p class="nota"><a href="guia.html">¿Cómo saco mi usuario y clave? Ver la guía paso a paso</a></p>
       <button type="button" id="btn-kaggle-json" class="boton-secundario" hidden>Usar kaggle.json</button>
       <input id="entrada-kaggle-json" type="file" accept=".json,application/json" hidden>
-      <label for="in-usuario">Usuario</label>
+      <label for="in-usuario">Usuario <span class="nota">(se completa solo al probar la clave)</span></label>
       <input id="in-usuario" autocomplete="off" autocapitalize="off" spellcheck="false">
       <label for="in-clave">Clave (API key)</label>
       <input id="in-clave" type="password" autocomplete="off" spellcheck="false">
@@ -135,12 +140,14 @@
   <!-- Crear audiolibro desde EPUB -->
   <dialog id="dlg-generar">
     <form method="dialog" id="form-generar">
-      <h2>Crear audiolibro</h2>
-      <button type="button" id="btn-elegir-epub-gen" class="boton-secundario">Elegir EPUB</button>
-      <input id="entrada-epub-gen" type="file" accept=".epub,application/epub+zip" hidden>
-      <p id="gen-epub-info" class="nota"></p>
-      <label for="in-titulo-gen">Título</label>
-      <input id="in-titulo-gen" maxlength="120" autocomplete="off">
+      <h2 id="gen-titulo-dlg">Crear audiolibro</h2>
+      <div id="bloque-libro-gen">
+        <button type="button" id="btn-elegir-epub-gen" class="boton-secundario">Elegir EPUB</button>
+        <input id="entrada-epub-gen" type="file" accept=".epub,application/epub+zip" hidden>
+        <p id="gen-epub-info" class="nota"></p>
+        <label for="in-titulo-gen">Título</label>
+        <input id="in-titulo-gen" maxlength="120" autocomplete="off">
+      </div>
       <fieldset class="voces">
         <legend>Voz</legend>
         <label class="opcion-voz"><input type="radio" name="voz" value="guardada" id="voz-guardada"> <span id="txt-voz-guardada">Mi voz guardada</span></label>
@@ -161,8 +168,10 @@
       <p id="gen-mensaje" class="gen-mensaje" role="status"></p>
       <div class="fila-botones">
         <button value="cancelar" class="chip" id="btn-gen-cancelar" formnovalidate>Cancelar</button>
-        <button type="button" id="btn-gen-iniciar" class="boton-principal">Generar</button>
+        <button type="button" id="btn-gen-iniciar" class="boton-principal">Escuchar una muestra</button>
       </div>
+      <p class="nota centrado" id="txt-muestra-ayuda">Primero Kaggle crea unos segundos del libro con esa voz (10 a 20 minutos). Si te gusta, sigues con el libro completo.</p>
+      <button type="button" id="btn-gen-directo" class="enlace">Saltar la muestra y generar el libro completo</button>
     </form>
   </dialog>
 
