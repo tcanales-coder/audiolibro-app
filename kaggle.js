@@ -1,7 +1,7 @@
 // Generar audiolibros en Kaggle desde la app (etapa 2).
 // Cada persona usa su propia cuenta gratuita de Kaggle; su clave queda solo en su teléfono.
 const KAGGLE = (() => {
-  const INTERMEDIARIO_POR_DEFECTO = "";   // se completa cuando el intermediario esté publicado
+  const INTERMEDIARIO_POR_DEFECTO = "https://cold-surf-87d1.tcanales.workers.dev";
 
   // ---------- credenciales y ajustes (solo en este teléfono) ----------
   function ajustes() {
