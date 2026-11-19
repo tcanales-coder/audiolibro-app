@@ -47,10 +47,29 @@ const KAGGLE = (() => {
   }
   const viaIntermediario = url => `${intermediario()}/archivo?url=${encodeURIComponent(url)}`;
 
+  // Con los tokens nuevos (KGAT_), el usuario real se le pregunta a Kaggle, igual que hace su
+  // programa oficial. Así no importa si la persona escribió mal su usuario (mayúsculas, su nombre
+  // visible, etc.): todo lo que se crea queda bajo el dueño correcto.
+  async function confirmarUsuario() {
+    const a = ajustes();
+    if (!/^KGAT_/.test(a.clave || "")) return a.usuario;
+    let r;
+    try { r = await api("security.OAuthService", "IntrospectToken", { token: a.clave }); }
+    catch (e) {
+      if (e.status === 401 || e.status === 403) throw new Error("Kaggle no aceptó la clave. Genera un token nuevo y pégalo completo.");
+      if (a.usuario) return a.usuario;      // si Kaggle no responde a esto, seguimos con lo escrito
+      throw e;
+    }
+    if (!r.active || !r.username) throw new Error("Esa clave está vencida o fue borrada. Genera un token nuevo en Kaggle.");
+    if (r.username !== a.usuario) guardarAjustes({ ...a, usuario: r.username });
+    return r.username;
+  }
+
   async function probar() {
-    // una consulta liviana para confirmar usuario y clave
-    await api("kernels.KernelsApiService", "ListKernels", { user: ajustes().usuario, pageSize: 1 });
-    return true;
+    const usuario = await confirmarUsuario();
+    // una consulta liviana para confirmar que la clave sirve para la API
+    await api("kernels.KernelsApiService", "ListKernels", { user: usuario, pageSize: 1 });
+    return usuario;
   }
 
   // ---------- subir archivos y crear el dataset ----------
@@ -73,21 +92,34 @@ const KAGGLE = (() => {
 
   const esperar = ms => new Promise(ok => setTimeout(ok, ms));
 
+  // Devuelve { usuario, slug } tal como quedó en Kaggle.
   async function crearDataset(slug, titulo, archivos, avisar) {
-    const usuario = ajustes().usuario;
+    let usuario = await confirmarUsuario();
     const tokens = [];
     for (const [nombre, archivo] of archivos) {
       avisar(`Subiendo ${nombre}…`);
       tokens.push({ token: await subirArchivo(archivo, nombre) });
     }
     avisar("Creando la carpeta del libro en Kaggle…");
-    await api("datasets.DatasetApiService", "CreateDataset", {
+    const creado = await api("datasets.DatasetApiService", "CreateDataset", {
       ownerSlug: usuario, slug, title: titulo, isPrivate: true, licenseName: "unknown", files: tokens,
     });
-    // Kaggle tarda un poco en dejar listo el dataset; esperamos antes de lanzar el notebook
+    // Usar el dueño y nombre que Kaggle realmente le dio (puede diferir de lo pedido)
+    const partes = String(creado.url || creado.ref || "").replace(/^https?:\/\/[^/]+/, "")
+      .replace(/^\/?datasets\//, "").split("/").filter(Boolean);
+    if (partes.length >= 2) { usuario = partes[partes.length - 2]; slug = partes[partes.length - 1]; }
+    // Kaggle tarda un poco en dejar listo el dataset; esperamos antes de lanzar el notebook.
+    // Recién creado, a veces responde "sin permiso" o "no existe" unos segundos: eso se reintenta.
     for (let i = 0; i < 60; i++) {
-      const st = await api("datasets.DatasetApiService", "GetDatasetStatus", { ownerSlug: usuario, datasetSlug: slug });
-      if (st.status === "READY") return;
+      let st;
+      try { st = await api("datasets.DatasetApiService", "GetDatasetStatus", { ownerSlug: usuario, datasetSlug: slug }); }
+      catch (e) {
+        if ((e.status === 403 || e.status === 404) && i < 8) { avisar("Kaggle está preparando los archivos…"); await esperar(5000); continue; }
+        throw e.status === 403 || e.status === 404
+          ? new Error(`Kaggle creó la carpeta del libro pero no deja leerla (${usuario}/${slug}). Revisa en Cuenta de Kaggle que el usuario sea el tuyo.`)
+          : e;
+      }
+      if (st.status === "READY") return { usuario, slug };
       if (st.status === "FAILED") throw new Error("Kaggle no pudo procesar los archivos subidos.");
       avisar("Kaggle está preparando los archivos…");
       await esperar(5000);
@@ -199,7 +231,7 @@ const KAGGLE = (() => {
   }
 
   return {
-    ajustes, guardarAjustes, listo, intermediario, probar, crearDataset,
+    ajustes, guardarAjustes, listo, intermediario, probar, confirmarUsuario, crearDataset,
     prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar,
   };
 })();

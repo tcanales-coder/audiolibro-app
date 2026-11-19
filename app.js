@@ -807,16 +807,20 @@ async function guardarCuenta() {
     usuario: $("in-usuario").value.trim().replace(/^@/, "").replace(/^.*kaggle\.com\//, "").replace(/\/.*$/, ""),
     intermediario: $("in-intermediario").value.trim(),
   };
-  if (!a.usuario || !a.clave) { $("cuenta-mensaje").textContent = "Falta el usuario o la clave."; return; }
+  if (!a.clave) { $("cuenta-mensaje").textContent = "Falta la clave."; return; }
+  if (!a.usuario && !/^KGAT_/.test(a.clave)) { $("cuenta-mensaje").textContent = "Falta el usuario."; return; }
   if (!a.intermediario && !KAGGLE.intermediario()) { $("cuenta-mensaje").textContent = "Falta la dirección del intermediario (en Avanzado)."; return; }
   if (!a.intermediario) delete a.intermediario;
   const anterior = KAGGLE.ajustes();
   KAGGLE.guardarAjustes(a);
   $("cuenta-mensaje").textContent = "Probando con Kaggle…";
   try {
-    await KAGGLE.probar();
-    $("cuenta-mensaje").textContent = "¡Listo! Kaggle aceptó tu cuenta.";
-    setTimeout(() => $("dlg-cuenta").close(), 900);
+    const usuario = await KAGGLE.probar();
+    const corregido = a.usuario && a.usuario !== usuario;
+    $("in-usuario").value = usuario;
+    $("cuenta-mensaje").textContent = `¡Listo! Conectada la cuenta de Kaggle «${usuario}».` +
+      (corregido ? ` (Corregí el usuario: era «${usuario}», no «${a.usuario}».)` : "");
+    setTimeout(() => $("dlg-cuenta").close(), corregido ? 3500 : 1200);
   } catch (e) {
     KAGGLE.guardarAjustes(anterior.usuario ? anterior : a);
     $("cuenta-mensaje").textContent = "No funcionó: " + e.message;
@@ -900,15 +904,16 @@ async function iniciarGeneracion() {
 
   $("btn-gen-iniciar").disabled = true;
   const id = idCorto();
-  const slugKernel = `audiolibro-${id}`, slugDataset = `audiolibro-${id}-entrada`;
-  const usuario = KAGGLE.ajustes().usuario;
+  const slugKernel = `audiolibro-${id}`;
+  let slugDataset = `audiolibro-${id}-entrada`;
+  let usuario = KAGGLE.ajustes().usuario;
   const nombreEpub = nombreSeguro(generacion.epub.name);
   const archivos = [[nombreEpub, generacion.epub]];
   const nombreVoz = voz ? nombreSeguro(voz.name) : "";
   if (voz) archivos.push([nombreVoz, voz]);
 
   try {
-    await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg);
+    ({ usuario, slug: slugDataset } = await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg));
     msg("Lanzando el notebook con GPU…");
     var config = { epub: nombreEpub, voz: nombreVoz, descripcion };
     const texto = await KAGGLE.prepararNotebook(config);
