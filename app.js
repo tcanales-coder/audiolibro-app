@@ -802,8 +802,9 @@ function abrirCuenta(mensaje = "") {
 }
 async function guardarCuenta() {
   const a = {
-    usuario: $("in-usuario").value.trim(),
-    clave: $("in-clave").value.trim(),
+    // si se pegó la línea completa de Kaggle (export KAGGLE_API_TOKEN=KGAT_…), tomar solo el token
+    clave: (($("in-clave").value.match(/KGAT_[A-Za-z0-9_\-]+/) || [])[0] || $("in-clave").value).trim().replace(/^["']|["']$/g, ""),
+    usuario: $("in-usuario").value.trim().replace(/^@/, "").replace(/^.*kaggle\.com\//, "").replace(/\/.*$/, ""),
     intermediario: $("in-intermediario").value.trim(),
   };
   if (!a.usuario || !a.clave) { $("cuenta-mensaje").textContent = "Falta el usuario o la clave."; return; }
