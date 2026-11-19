@@ -199,6 +199,8 @@ function progresoLibro(l) {
 
 async function mostrarBiblioteca() {
   $("vista-reproductor").hidden = true;
+  $("vista-generando").hidden = true;
+  clearInterval(generacion.reloj);
   $("vista-biblioteca").hidden = false;
   $("btn-volver").hidden = true;
   $("btn-texto").hidden = true;
@@ -220,10 +222,12 @@ async function mostrarBiblioteca() {
       <span class="mini" style="background:${colorPortada(l.titulo)}">${iniciales(l.titulo)}</span>
       <span class="info">
         <span class="t"></span>
-        <span class="d">${l.pistas.length} ${l.pistas.length === 1 ? "parte" : "capítulos"}${total ? " · " + duracionTexto(total) : ""}</span>
-        <span class="barra-mini"><span style="width:${pct}%"></span></span>
+        ${l.generando
+          ? `<span class="d generando">${textoEstadoCorto(l.generando)}</span>`
+          : `<span class="d">${l.pistas.length} ${l.pistas.length === 1 ? "parte" : "capítulos"}${total ? " · " + duracionTexto(total) : ""}</span>
+             <span class="barra-mini"><span style="width:${pct}%"></span></span>`}
       </span>
-      <span class="pct">${pct}%</span>`;
+      <span class="pct">${l.generando ? "" : pct + "%"}</span>`;
     b.querySelector(".t").textContent = l.titulo;
     const url = await urlPortada(l);
     if (url) { const m = b.querySelector(".mini"); fondoPortada(m, l, url); m.textContent = ""; }
@@ -292,6 +296,7 @@ async function cambiarPortada(archivo) {
 async function abrirLibro(id) {
   const l = await BD.libro(id);
   if (!l) return mostrarBiblioteca();
+  if (l.generando) return abrirGenerando(l);
   l.abierto = Date.now();
   await BD.guardarLibro(l);
   estado.libro = l;
@@ -756,6 +761,279 @@ function seguirTexto(forzar = false) {
   if (forzar || Date.now() > lectura.manualHasta) s.scrollIntoView({ block: "center", behavior: forzar ? "auto" : "smooth" });
 }
 
+// ---------- etapa 2: generar en Kaggle ----------
+const generacion = { epub: null, epubInfo: null, voz: null, reloj: 0, libro: null };
+const ESTADOS = {
+  SUBIENDO: "Subiendo a Kaggle…", QUEUED: "En la fila de Kaggle", RUNNING: "Generando el audio",
+  COMPLETE: "¡Terminado!", ERROR: "Kaggle tuvo un error", CANCEL_REQUESTED: "Cancelado", CANCEL_ACKNOWLEDGED: "Cancelado",
+};
+function textoEstadoCorto(g) {
+  if (g.descargado) return "Descargando…";
+  const base = ESTADOS[g.estado] || "Generando";
+  if (g.estado === "RUNNING" && g.horasRestantes != null) return `${base} · quedan ~${String(g.horasRestantes).replace(".", ",")} h`;
+  return base;
+}
+const idCorto = () => uid().replace(/[^a-f0-9]/gi, "").slice(0, 8).toLowerCase();
+
+// --- cuenta ---
+function abrirCuenta(mensaje = "") {
+  const a = KAGGLE.ajustes();
+  $("in-usuario").value = a.usuario || "";
+  $("in-clave").value = a.clave || "";
+  $("in-intermediario").value = a.intermediario || KAGGLE.intermediario();
+  $("cuenta-mensaje").textContent = mensaje;
+  $("dlg-cuenta").showModal();
+}
+async function guardarCuenta() {
+  const a = {
+    usuario: $("in-usuario").value.trim(),
+    clave: $("in-clave").value.trim(),
+    intermediario: $("in-intermediario").value.trim(),
+  };
+  if (!a.usuario || !a.clave) { $("cuenta-mensaje").textContent = "Falta el usuario o la clave."; return; }
+  if (!a.intermediario && !KAGGLE.intermediario()) { $("cuenta-mensaje").textContent = "Falta la dirección del intermediario (en Avanzado)."; return; }
+  if (!a.intermediario) delete a.intermediario;
+  const anterior = KAGGLE.ajustes();
+  KAGGLE.guardarAjustes(a);
+  $("cuenta-mensaje").textContent = "Probando con Kaggle…";
+  try {
+    await KAGGLE.probar();
+    $("cuenta-mensaje").textContent = "¡Listo! Kaggle aceptó tu cuenta.";
+    setTimeout(() => $("dlg-cuenta").close(), 900);
+  } catch (e) {
+    KAGGLE.guardarAjustes(anterior.usuario ? anterior : a);
+    $("cuenta-mensaje").textContent = "No funcionó: " + e.message;
+  }
+}
+async function leerKaggleJson(archivo) {
+  try {
+    const d = JSON.parse(await archivo.text());
+    if (d.username) $("in-usuario").value = d.username;
+    if (d.key) $("in-clave").value = d.key;
+    $("cuenta-mensaje").textContent = "Datos cargados. Toca «Probar y guardar».";
+  } catch { $("cuenta-mensaje").textContent = "Ese archivo no parece un kaggle.json."; }
+}
+
+// --- formulario de nuevo libro ---
+async function abrirGenerar() {
+  if (!KAGGLE.listo()) return abrirCuenta("Primero conecta tu cuenta de Kaggle (solo una vez).");
+  generacion.epub = null; generacion.voz = null;
+  $("gen-epub-info").textContent = "";
+  $("in-titulo-gen").value = "";
+  $("gen-voz-info").textContent = "";
+  $("gen-mensaje").textContent = ""; $("gen-mensaje").classList.remove("error");
+  $("btn-gen-iniciar").disabled = false;
+  const guardada = leerPref("vozGuardadaNombre", "");
+  $("voz-guardada").closest("label").hidden = !guardada;
+  $("txt-voz-guardada").textContent = guardada ? `Mi voz guardada (${guardada})` : "";
+  (guardada ? $("voz-guardada") : $("voz-describir")).checked = true;
+  pintarOpcionesVoz();
+  $("dlg-generar").showModal();
+}
+function pintarOpcionesVoz() {
+  const v = document.querySelector('input[name="voz"]:checked')?.value;
+  $("bloque-voz-archivo").hidden = v !== "archivo";
+  $("bloque-voz-describir").hidden = v !== "describir";
+}
+async function elegirEpubGen(archivo) {
+  if (!archivo) return;
+  generacion.epub = archivo;
+  try {
+    const d = leerEpub(new Uint8Array(await archivo.arrayBuffer()));
+    generacion.epubInfo = d;
+    const car = d.capitulos.reduce((n, c) => n + c.reduce((m, b) => m + b.t.length, 0), 0);
+    const horas = car / 15 * 1.5 / 3600;      // ~15 caracteres por segundo de audio, ~1,5 s de GPU por segundo
+    $("gen-epub-info").textContent = `${archivo.name} · ${car.toLocaleString("es")} caracteres · ~${Math.max(1, Math.round(horas))} h de GPU`;
+    if (!$("in-titulo-gen").value) $("in-titulo-gen").value = d.titulo || archivo.name.replace(/\.epub$/i, "");
+  } catch (e) {
+    $("gen-epub-info").textContent = `${archivo.name} (no pude leer el contenido: ${e.message})`;
+  }
+}
+function nombreSeguro(n) {
+  const ext = (n.match(/\.[a-z0-9]+$/i) || [""])[0].toLowerCase();
+  const base = n.slice(0, n.length - ext.length).normalize("NFKD").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_").slice(0, 50) || "archivo";
+  return base + ext;
+}
+
+async function iniciarGeneracion() {
+  const msg = t => { $("gen-mensaje").textContent = t; };
+  const fallo = t => { $("gen-mensaje").textContent = t; $("gen-mensaje").classList.add("error"); $("btn-gen-iniciar").disabled = false; };
+  $("gen-mensaje").classList.remove("error");
+  if (!generacion.epub) return fallo("Elige primero el EPUB.");
+  const titulo = $("in-titulo-gen").value.trim() || generacion.epub.name.replace(/\.epub$/i, "");
+  const tipoVoz = document.querySelector('input[name="voz"]:checked')?.value;
+
+  // la voz
+  let voz = null, descripcion = "";
+  if (tipoVoz === "guardada") {
+    const blob = await BD.archivo("voz-guardada");
+    if (!blob) return fallo("No encontré la voz guardada. Elige un audio.");
+    voz = new File([blob], leerPref("vozGuardadaNombre", "voz.wav"), { type: blob.type });
+  } else if (tipoVoz === "archivo") {
+    if (!generacion.voz) return fallo("Elige el audio de la voz.");
+    voz = generacion.voz;
+    if ($("chk-recordar-voz").checked) {
+      await BD.guardarArchivo("voz-guardada", voz);
+      guardarPref("vozGuardadaNombre", nombreSeguro(voz.name));
+    }
+  } else {
+    descripcion = $("in-descripcion").value.trim();
+    if (!descripcion) return fallo("Escribe cómo quieres que suene la voz.");
+  }
+
+  $("btn-gen-iniciar").disabled = true;
+  const id = idCorto();
+  const slugKernel = `audiolibro-${id}`, slugDataset = `audiolibro-${id}-entrada`;
+  const usuario = KAGGLE.ajustes().usuario;
+  const nombreEpub = nombreSeguro(generacion.epub.name);
+  const archivos = [[nombreEpub, generacion.epub]];
+  const nombreVoz = voz ? nombreSeguro(voz.name) : "";
+  if (voz) archivos.push([nombreVoz, voz]);
+
+  try {
+    await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg);
+    msg("Lanzando el notebook con GPU…");
+    var config = { epub: nombreEpub, voz: nombreVoz, descripcion };
+    const texto = await KAGGLE.prepararNotebook(config);
+    await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${id}`, texto, { datasets: [`${usuario}/${slugDataset}`] });
+  } catch (e) {
+    return fallo("No se pudo: " + e.message);
+  }
+
+  const libro = {
+    id: uid(), titulo, creado: Date.now(), pistas: [], pos: { pista: 0, tiempo: 0 }, terminado: false,
+    generando: {
+      kernel: slugKernel, partes: [slugKernel], dataset: slugDataset, usuario, estado: "QUEUED",
+      inicio: Date.now(), config,
+    },
+  };
+  await BD.guardarLibro(libro);
+  msg("¡Listo! Kaggle empezó a generar tu libro.");
+  setTimeout(() => { $("dlg-generar").close(); abrirGenerando(libro); }, 900);
+}
+
+// --- seguimiento ---
+async function abrirGenerando(l) {
+  generacion.libro = l;
+  $("vista-biblioteca").hidden = true;
+  $("vista-reproductor").hidden = true;
+  $("vista-generando").hidden = false;
+  $("btn-volver").hidden = false;
+  $("btn-texto").hidden = true;
+  $("titulo-barra").textContent = l.titulo;
+  $("gen-enlace").href = `https://www.kaggle.com/code/${l.generando.usuario}/${l.generando.kernel}`;
+  pintarGenerando();
+  await actualizarGenerando();
+  clearInterval(generacion.reloj);
+  generacion.reloj = setInterval(() => { if (!$("vista-generando").hidden && !document.hidden) actualizarGenerando(); }, 120000);
+}
+
+function pintarGenerando(detalle) {
+  const g = generacion.libro.generando;
+  const icono = $("gen-icono");
+  icono.className = "gen-icono" + (g.estado === "COMPLETE" ? " listo" : g.estado === "ERROR" ? " error" : " girando");
+  $("gen-estado").textContent = g.pausado ? "Kaggle hizo una pausa" : (ESTADOS[g.estado] || "Generando");
+  let d = detalle || "";
+  if (!d) {
+    if (g.estado === "QUEUED") d = "Esperando una GPU libre. Suele tardar unos minutos.";
+    else if (g.estado === "RUNNING") {
+      const partes = [];
+      if (g.capitulosListos != null && g.capitulosTotales) partes.push(`${g.capitulosListos} de ${g.capitulosTotales} capítulos listos`);
+      if (g.horasRestantes != null) {
+        const fin = new Date(Date.now() + g.horasRestantes * 3600000);
+        partes.push(`quedan ~${String(g.horasRestantes).replace(".", ",")} h (cerca de las ${fin.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })})`);
+      }
+      d = partes.join(" · ") || "Instalando y cargando la voz (los primeros 10–15 minutos).";
+    } else if (g.estado === "COMPLETE") d = g.pausado
+      ? "Kaggle llega a un máximo de horas por corrida. Toca Continuar y sigue desde donde quedó."
+      : "Toca Descargar para guardarlo en tu teléfono.";
+    else if (g.estado === "ERROR") d = g.error || "Abre Kaggle para ver el detalle.";
+  }
+  $("gen-detalle").textContent = d;
+  const pct = g.estado === "COMPLETE" && !g.pausado ? 100
+    : (g.capitulosListos && g.capitulosTotales ? Math.round(g.capitulosListos / g.capitulosTotales * 100) : (g.estado === "RUNNING" ? 3 : 0));
+  $("gen-barra").style.width = pct + "%";
+  $("btn-gen-descargar").hidden = !(g.estado === "COMPLETE" && !g.pausado);
+  $("btn-gen-continuar").hidden = !(g.estado === "COMPLETE" && g.pausado);
+  $("btn-gen-actualizar").hidden = g.estado === "COMPLETE";
+}
+
+async function actualizarGenerando() {
+  const l = generacion.libro, g = l.generando;
+  $("btn-gen-actualizar").disabled = true;
+  try {
+    const st = await KAGGLE.estado(g.kernel);
+    g.estado = st.estado; g.error = st.error;
+    if (g.estado === "RUNNING") {
+      const av = await KAGGLE.avance(g.kernel);
+      if (av) Object.assign(g, {
+        horasRestantes: av.horasRestantes ?? g.horasRestantes,
+        capitulosListos: av.capitulosListos || g.capitulosListos || 0,
+        capitulosTotales: av.capitulosTotales || g.capitulosTotales,
+      });
+    } else if (g.estado === "COMPLETE") {
+      const salida = await KAGGLE.archivosDeSalida(g.kernel);
+      g.pausado = !!(salida.registro && salida.registro.pausado);
+      g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
+    }
+    await BD.guardarLibro(l);
+    pintarGenerando();
+  } catch (e) {
+    pintarGenerando("No pude consultar a Kaggle: " + e.message);
+  } finally {
+    $("btn-gen-actualizar").disabled = false;
+  }
+}
+
+async function continuarGeneracion() {
+  const l = generacion.libro, g = l.generando;
+  const n = g.partes.length + 1, slug = `${g.partes[0]}-p${n}`;
+  pintarGenerando("Lanzando la siguiente parte…");
+  try {
+    // mismo notebook y misma configuración; los capítulos ya hechos llegan como entrada y se saltan
+    const texto = await KAGGLE.prepararNotebook(g.config || { epub: "", voz: "", descripcion: "" });
+    await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
+      { datasets: [`${g.usuario}/${g.dataset}`], kernels: [`${g.usuario}/${g.kernel}`] });
+    g.partes.push(slug); g.kernel = slug; g.estado = "QUEUED"; g.pausado = false;
+    $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${slug}`;
+    await BD.guardarLibro(l);
+    pintarGenerando();
+  } catch (e) { pintarGenerando("No se pudo continuar: " + e.message); }
+}
+
+async function descargarGenerado() {
+  const l = generacion.libro, g = l.generando;
+  const elegidos = (g.archivos || []).filter(f => /\.(mp3|json)$/i.test(f.nombre) && !/(^|\/)_partes\//.test(f.nombre));
+  if (!elegidos.some(f => /\.mp3$/i.test(f.nombre))) { pintarGenerando("No encontré capítulos en la salida de Kaggle."); return; }
+  $("btn-gen-descargar").disabled = true;
+  const archivos = [];
+  try {
+    for (let i = 0; i < elegidos.length; i++) {
+      pintarGenerando(`Descargando ${i + 1} de ${elegidos.length}…`);
+      const blob = await KAGGLE.descargar(elegidos[i].url);
+      archivos.push(new File([blob], elegidos[i].nombre.replace(/^.*\//, ""), { type: /\.json$/i.test(elegidos[i].nombre) ? "application/json" : "audio/mpeg" }));
+    }
+    const pistas = await expandirArchivos(archivos);
+    l.pistas = [];
+    for (let i = 0; i < pistas.length; i++) {
+      pintarGenerando(`Guardando capítulo ${i + 1} de ${pistas.length}…`);
+      const idArchivo = uid();
+      await BD.guardarArchivo(idArchivo, pistas[i].blob);
+      l.pistas.push({ nombre: nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob), frases: pistas[i].frases || null });
+    }
+    l.generado = { ...g, archivos: undefined };
+    delete l.generando;
+    await BD.guardarLibro(l);
+    pedirAlmacenamientoPersistente();
+    avisar(`“${l.titulo}” está listo para escuchar 🎧`);
+    abrirLibro(l.id);
+  } catch (e) {
+    pintarGenerando("Falló la descarga: " + e.message + ". Toca Descargar para reintentar.");
+  } finally {
+    $("btn-gen-descargar").disabled = false;
+  }
+}
+
 // ---------- velocidad y temporizador ----------
 function cambiarVelocidad() {
   const i = VELOCIDADES.indexOf(estado.velocidad);
@@ -857,6 +1135,34 @@ iniciarGestosLectura();
 ["touchmove", "wheel"].forEach(ev => $("panel-texto").addEventListener(ev, () => { lectura.manualHasta = Date.now() + 6000; }, { passive: true }));
 $("portada").onclick = () => $("entrada-portada").click();
 $("entrada-portada").onchange = e => { const f = e.target.files[0]; e.target.value = ""; cambiarPortada(f); };
+$("btn-generar").onclick = abrirGenerar;
+$("btn-cuenta").onclick = () => abrirCuenta();
+$("btn-cuenta-guardar").onclick = guardarCuenta;
+$("btn-kaggle-json").onclick = () => $("entrada-kaggle-json").click();
+$("entrada-kaggle-json").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) leerKaggleJson(f); };
+$("btn-elegir-epub-gen").onclick = () => $("entrada-epub-gen").click();
+$("entrada-epub-gen").onchange = e => { const f = e.target.files[0]; e.target.value = ""; elegirEpubGen(f); };
+$("btn-elegir-voz").onclick = () => $("entrada-voz").click();
+$("entrada-voz").onchange = e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  generacion.voz = f;
+  $("gen-voz-info").textContent = `${f.name} · ${Math.round(f.size / 1024)} KB`;
+};
+document.querySelectorAll('input[name="voz"]').forEach(r => r.onchange = pintarOpcionesVoz);
+$("btn-gen-iniciar").onclick = iniciarGeneracion;
+$("btn-gen-actualizar").onclick = actualizarGenerando;
+$("btn-gen-descargar").onclick = descargarGenerado;
+$("btn-gen-continuar").onclick = continuarGeneracion;
+$("btn-gen-borrar").onclick = async () => {
+  const dlg = $("dlg-confirmar");
+  dlg.showModal();
+  dlg.addEventListener("close", async () => {
+    if (dlg.returnValue !== "ok") return;
+    await BD.borrarLibro(generacion.libro);
+    mostrarBiblioteca();
+  }, { once: true });
+};
 $("btn-agregar").onclick = () => $("entrada-archivos").click();
 $("entrada-archivos").onchange = e => { const f = [...e.target.files]; e.target.value = ""; importar(f); };
 $("btn-borrar").onclick = () => {

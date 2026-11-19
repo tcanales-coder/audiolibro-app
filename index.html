@@ -29,7 +29,9 @@
       <p>Agrega los MP3 de un libro, o el archivo .zip que descargas desde la pestaña <b>Output</b> de Kaggle.</p>
     </div>
     <ul id="lista-libros" class="libros"></ul>
-    <button id="btn-agregar" class="boton-principal">+ Agregar libro</button>
+    <button id="btn-generar" class="boton-principal">+ Crear audiolibro desde un EPUB</button>
+    <button id="btn-agregar" class="boton-secundario">Agregar audios que ya tengo</button>
+    <button id="btn-cuenta" class="enlace">Cuenta de Kaggle</button>
     <input id="entrada-archivos" type="file" multiple
            accept="audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.wav,.zip,.json" hidden>
     <p class="nota" id="nota-espacio"></p>
@@ -87,6 +89,89 @@
     <ol id="lista-capitulos" class="capitulos"></ol>
     <button id="btn-borrar" class="boton-peligro">Borrar este libro del teléfono</button>
   </main>
+
+  <!-- Libro generándose en Kaggle -->
+  <main id="vista-generando" class="vista" hidden>
+    <div class="estado-gen">
+      <div id="gen-icono" class="gen-icono" aria-hidden="true"></div>
+      <p id="gen-estado" class="gen-estado"></p>
+      <p id="gen-detalle" class="nota"></p>
+      <div class="barra-gen"><span id="gen-barra"></span></div>
+    </div>
+    <button id="btn-gen-actualizar" class="boton-principal">Actualizar</button>
+    <button id="btn-gen-descargar" class="boton-principal" hidden>Descargar el audiolibro</button>
+    <button id="btn-gen-continuar" class="boton-principal" hidden>Continuar la generación</button>
+    <a id="gen-enlace" class="boton-secundario centrado" target="_blank" rel="noopener">Ver en Kaggle</a>
+    <p class="nota">Puedes cerrar la app: el libro se sigue generando en Kaggle. Vuelve cuando quieras y toca Actualizar.</p>
+    <button id="btn-gen-borrar" class="boton-peligro">Quitar de la biblioteca</button>
+  </main>
+
+  <!-- Cuenta de Kaggle -->
+  <dialog id="dlg-cuenta">
+    <form method="dialog" id="form-cuenta">
+      <h2>Tu cuenta de Kaggle</h2>
+      <p class="nota">El audio se genera gratis con tu propia cuenta de Kaggle. Tu clave queda guardada solo en este teléfono.</p>
+      <details class="ayuda">
+        <summary>¿Dónde consigo la clave?</summary>
+        <ol>
+          <li>Entra a kaggle.com → tu foto → <b>Settings</b>.</li>
+          <li>En <b>API</b>, toca <b>Create New Token</b>. Se descarga <b>kaggle.json</b>.</li>
+          <li>Aquí abajo toca <b>Usar kaggle.json</b> y elígelo.</li>
+        </ol>
+        <p>Tu cuenta de Kaggle debe tener el teléfono verificado para poder usar GPU e internet.</p>
+      </details>
+      <button type="button" id="btn-kaggle-json" class="boton-secundario">Usar kaggle.json</button>
+      <input id="entrada-kaggle-json" type="file" accept=".json,application/json" hidden>
+      <label for="in-usuario">Usuario</label>
+      <input id="in-usuario" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label for="in-clave">Clave (API key)</label>
+      <input id="in-clave" type="password" autocomplete="off" spellcheck="false">
+      <details class="ayuda">
+        <summary>Avanzado</summary>
+        <label for="in-intermediario">Dirección del intermediario</label>
+        <input id="in-intermediario" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://…workers.dev">
+      </details>
+      <p id="cuenta-mensaje" class="nota"></p>
+      <div class="fila-botones">
+        <button value="cancelar" class="chip" formnovalidate>Cerrar</button>
+        <button type="button" id="btn-cuenta-guardar" class="boton-principal">Probar y guardar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Crear audiolibro desde EPUB -->
+  <dialog id="dlg-generar">
+    <form method="dialog" id="form-generar">
+      <h2>Crear audiolibro</h2>
+      <button type="button" id="btn-elegir-epub-gen" class="boton-secundario">Elegir EPUB</button>
+      <input id="entrada-epub-gen" type="file" accept=".epub,application/epub+zip" hidden>
+      <p id="gen-epub-info" class="nota"></p>
+      <label for="in-titulo-gen">Título</label>
+      <input id="in-titulo-gen" maxlength="120" autocomplete="off">
+      <fieldset class="voces">
+        <legend>Voz</legend>
+        <label class="opcion-voz"><input type="radio" name="voz" value="guardada" id="voz-guardada"> <span id="txt-voz-guardada">Mi voz guardada</span></label>
+        <label class="opcion-voz"><input type="radio" name="voz" value="archivo" id="voz-archivo"> Elegir un audio para clonar (10 a 20 s)</label>
+        <label class="opcion-voz"><input type="radio" name="voz" value="describir" id="voz-describir"> Describir la voz</label>
+      </fieldset>
+      <div id="bloque-voz-archivo" hidden>
+        <button type="button" id="btn-elegir-voz" class="boton-secundario">Elegir audio</button>
+        <input id="entrada-voz" type="file" accept="audio/*,.wav,.mp3,.m4a" hidden>
+        <p id="gen-voz-info" class="nota"></p>
+        <label class="opcion-voz"><input type="checkbox" id="chk-recordar-voz" checked> Guardar esta voz para los próximos libros</label>
+      </div>
+      <div id="bloque-voz-describir" hidden>
+        <textarea id="in-descripcion" rows="3">A soft-spoken Latin American woman in her early 30s, gentle and calm, warm voice, slow relaxed pace, intimate audiobook narration</textarea>
+        <p class="nota">Mejor en inglés: edad, tono, ritmo y acento.</p>
+      </div>
+      <p class="nota">Usa solo libros que te pertenecen, y voces propias o con permiso.</p>
+      <p id="gen-mensaje" class="gen-mensaje" role="status"></p>
+      <div class="fila-botones">
+        <button value="cancelar" class="chip" id="btn-gen-cancelar" formnovalidate>Cancelar</button>
+        <button type="button" id="btn-gen-iniciar" class="boton-principal">Generar</button>
+      </div>
+    </form>
+  </dialog>
 
   <!-- Diálogo para nombrar el libro -->
   <dialog id="dlg-nombre">
@@ -159,6 +244,7 @@
 
   <script src="vendor/fflate-0.8.2.js"></script>
   <script src="db.js"></script>
+  <script src="kaggle.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

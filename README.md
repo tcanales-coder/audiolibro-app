@@ -28,3 +28,9 @@ Usa solo libros que te pertenecen y voces propias o con permiso.
 
 ---
 Archivos: `index.html` (pantallas), `app.js` (lógica), `db.js` (almacenamiento en el teléfono), `sw.js` (funcionamiento sin internet), `vendor/` (fflate, licencia MIT, para abrir .zip).
+
+## Etapa 2: crear el audiolibro desde la app
+- **Crear audiolibro desde un EPUB:** sube el EPUB (y la voz) a la cuenta de Kaggle de la persona, lanza el notebook con GPU, muestra el avance y descarga los capítulos al terminar.
+- Cada persona conecta **su propia** cuenta de Kaggle (kaggle.json). La clave queda solo en su teléfono.
+- `intermediario/worker.js`: Cloudflare Worker gratuito que pasa los mensajes entre la app y Kaggle (Kaggle no acepta llamadas directas desde una página web). No guarda nada.
+- `kaggle/plantilla.ipynb`: el notebook EPUB → audiolibro con VoxCPM2; la app solo cambia la celda de configuración.

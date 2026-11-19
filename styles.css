@@ -235,3 +235,40 @@ body.sin-scroll { overflow: hidden; }
 .sin-epub { font-family: system-ui, sans-serif; font-size: 1rem; text-align: center; padding-top: 24px; color: var(--suave); }
 .cambiar-epub { display: block; margin: 24px auto 0; font-family: system-ui, sans-serif; }
 .zona-brillo { position: fixed; left: 0; width: 16vw; top: calc(72px + env(safe-area-inset-top)); bottom: 0; z-index: 5; touch-action: none; }
+
+/* Etapa 2: generar en Kaggle */
+.boton-secundario {
+  display: block; width: 100%; padding: 12px 16px; margin-top: 10px; text-align: center; text-decoration: none;
+  border: 1px solid var(--acento); border-radius: 14px; background: none; color: var(--acento); font-weight: 600;
+}
+.enlace { display: block; margin: 14px auto 0; background: none; border: 0; color: var(--suave); text-decoration: underline; }
+.centrado { text-align: center; }
+dialog textarea {
+  width: 100%; padding: 10px; font: inherit; border-radius: 10px; border: 1px solid var(--linea);
+  background: var(--fondo); color: var(--texto); resize: vertical;
+}
+dialog { max-height: 90dvh; overflow-y: auto; }
+.voces { border: 0; padding: 0; margin: 14px 0 6px; }
+.voces legend { font-weight: 600; margin-bottom: 4px; padding: 0; }
+.opcion-voz { display: flex !important; align-items: center; gap: 10px; font-weight: 400 !important; margin: 8px 0 !important; }
+.opcion-voz input { width: auto; accent-color: var(--acento); }
+.ayuda { margin: 8px 0; color: var(--suave); font-size: .92rem; }
+.ayuda summary { cursor: pointer; color: var(--acento); }
+.ayuda ol { padding-left: 20px; margin: 6px 0; }
+.gen-mensaje { min-height: 1.4em; font-weight: 600; color: var(--acento); }
+.gen-mensaje.error { color: var(--peligro); }
+
+.estado-gen { text-align: center; padding: 24px 8px 8px; }
+.gen-icono {
+  width: 72px; height: 72px; margin: 0 auto 12px; border-radius: 50%;
+  border: 5px solid var(--linea); border-top-color: var(--acento);
+}
+.gen-icono.girando { animation: girar 1.4s linear infinite; }
+.gen-icono.listo { border-color: var(--acento); }
+.gen-icono.error { border-color: var(--peligro); }
+@keyframes girar { to { transform: rotate(360deg); } }
+.gen-estado { font-size: 1.2rem; font-weight: 600; margin: 0 0 4px; }
+.barra-gen { height: 8px; border-radius: 6px; background: var(--linea); overflow: hidden; margin: 14px 0 4px; }
+.barra-gen span { display: block; height: 100%; width: 0; background: var(--acento); transition: width .4s; }
+.tarjeta .generando { color: var(--acento); font-weight: 600; }
+.opcion-voz[hidden] { display: none !important; }
