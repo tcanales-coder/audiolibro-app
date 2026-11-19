@@ -300,6 +300,7 @@ async function abrirLibro(id) {
   l.abierto = Date.now();
   await BD.guardarLibro(l);
   estado.libro = l;
+  guardarPref("ultimoLibro", l.id);       // al volver a abrir la app, sigue aquí
 
   $("vista-biblioteca").hidden = true;
   $("vista-reproductor").hidden = false;
@@ -355,8 +356,22 @@ async function cargarPista(i, tiempo, reproducir) {
 
 function alternar() {
   if (!estado.libro) return;
-  if (audio.paused) audio.play().catch(e => avisar("No se pudo reproducir: " + e.message));
+  if (audio.paused) reproducirSeguro();
   else audio.pause();
+}
+// Android a veces deja el audio "dormido" tras pasar a otra app: si no arranca, se recarga
+// el capítulo desde el teléfono en el mismo punto y se intenta de nuevo.
+async function reproducirSeguro() {
+  const t = audio.currentTime || estado.libro.pos?.tiempo || 0;
+  const recargar = () => cargarPista(estado.pista, t, true);
+  if (audio.error || !audio.src) return recargar();
+  let arranco = false;
+  const marca = audio.currentTime;
+  const vigia = setTimeout(() => {
+    if (!arranco || (audio.currentTime === marca && !audio.paused)) { audio.pause(); recargar(); }
+  }, 2500);
+  try { await audio.play(); arranco = true; }
+  catch (e) { clearTimeout(vigia); if (e.name === "NotAllowedError") avisar("Toca play de nuevo"); else recargar(); }
 }
 function saltar(seg) {
   const d = audio.duration || 0;
@@ -506,6 +521,7 @@ const lectura = { pista: -1, actual: -1, spans: [], manualHasta: 0 };
 const tieneTexto = l => !!l && l.pistas.some(p => p.frases && p.frases.length);
 
 function abrirTexto() {
+  guardarPref("textoAbierto", true);
   $("panel-texto").hidden = false;
   document.body.classList.add("sin-scroll");
   $("hueco-progreso").appendChild(document.querySelector(".progreso"));   // la misma barra del reproductor
@@ -1111,9 +1127,9 @@ $("btn-anterior").onclick = anterior;
 $("btn-siguiente").onclick = siguiente;
 $("btn-velocidad").onclick = cambiarVelocidad;
 $("btn-dormir").onclick = cambiarDormir;
-$("btn-volver").onclick = () => { guardarPosicion(true); mostrarBiblioteca(); };
-$("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : cerrarTexto());
-$("btn-cerrar-texto").onclick = cerrarTexto;
+$("btn-volver").onclick = () => { guardarPosicion(true); guardarPref("ultimoLibro", null); mostrarBiblioteca(); };
+$("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : (guardarPref("textoAbierto", false), cerrarTexto()));
+$("btn-cerrar-texto").onclick = () => { guardarPref("textoAbierto", false); cerrarTexto(); };
 $("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value = ""; agregarEpub(f); };
 // lectura libre: recordar hasta dónde bajó la persona
 let guardadoScroll;
@@ -1181,7 +1197,21 @@ $("btn-borrar").onclick = () => {
 // ---------- inicio ----------
 pintarVelocidad();
 pintarDormir();
-mostrarBiblioteca();
+(async function iniciar() {
+  pedirAlmacenamientoPersistente();
+  let libros = [];
+  try { libros = await BD.libros(); } catch {}
+  if (libros.length) guardarPref("habiaLibros", true);
+  else if (leerPref("habiaLibros", false)) {
+    avisar("El teléfono borró los libros guardados. Abre la app siempre desde el ícono instalado (no desde WhatsApp ni una pestaña de incógnito).", 15000);
+    guardarPref("habiaLibros", false);
+  }
+  const ultimo = leerPref("ultimoLibro", null);
+  const l = ultimo && libros.find(x => x.id === ultimo && !x.generando);
+  if (!l) return mostrarBiblioteca();
+  await abrirLibro(l.id);
+  if (leerPref("textoAbierto", false)) abrirTexto();
+})();
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
