@@ -272,3 +272,4 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 .barra-gen span { display: block; height: 100%; width: 0; background: var(--acento); transition: width .4s; }
 .tarjeta .generando { color: var(--acento); font-weight: 600; }
 .opcion-voz[hidden] { display: none !important; }
+.guia-link { text-align: center; color: var(--acento); font-weight: 600; }

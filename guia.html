@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Guía Audiolibro</title>
+  <meta name="theme-color" content="#2b2238">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .guia { max-width: 560px; margin: 0 auto; padding: 16px 16px 48px; }
+    .guia h2 { font-size: 1.3rem; margin: 8px 0 4px; }
+    .guia .intro { color: var(--suave); margin: 0 0 20px; }
+    .paso {
+      background: var(--superficie); border: 1px solid var(--linea); border-radius: 16px;
+      padding: 16px 16px 14px; margin: 0 0 14px; display: grid; grid-template-columns: 36px 1fr; gap: 4px 12px;
+    }
+    .paso .num {
+      width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--acento); color: var(--acento-texto); font-weight: 700; grid-row: span 2;
+    }
+    .paso h3 { margin: 6px 0 2px; font-size: 1.05rem; }
+    .paso ol, .paso ul, .paso p { margin: 4px 0; padding-left: 20px; grid-column: 2; }
+    .paso p { padding-left: 0; }
+    .paso li { margin: 4px 0; }
+    .ruta { font-weight: 600; color: var(--acento); }
+    code { background: color-mix(in srgb, var(--acento) 14%, transparent); padding: 1px 6px; border-radius: 6px; font-size: .92em; word-break: break-all; }
+    .aviso-guia {
+      border-left: 4px solid var(--acento); background: color-mix(in srgb, var(--acento) 9%, var(--superficie));
+      border-radius: 10px; padding: 12px 14px; margin: 18px 0; font-size: .95rem;
+    }
+    .aviso-guia.cuidado { border-color: var(--peligro); background: color-mix(in srgb, var(--peligro) 8%, var(--superficie)); }
+    .aviso-guia > b:first-child { display: block; margin-bottom: 2px; }
+    .ir-app {
+      display: block; text-align: center; text-decoration: none; margin: 24px 0 0;
+      background: var(--acento); color: var(--acento-texto); padding: 14px; border-radius: 999px; font-weight: 600;
+    }
+    a { color: var(--acento); }
+  </style>
+</head>
+<body>
+  <header class="barra">
+    <a href="./" class="icono" aria-label="Volver a la app" style="color:var(--barra-texto)">
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+    </a>
+    <h1>Cómo empezar</h1>
+  </header>
+
+  <main class="guia">
+    <h2>Tus libros, leídos en voz alta</h2>
+    <p class="intro">Esta app convierte un libro EPUB en audiolibro, con el texto para ir leyendo. La voz se crea gratis con una cuenta de Kaggle, que es tuya y de nadie más. Se configura una sola vez, en unos 10 minutos.</p>
+
+    <section class="paso">
+      <span class="num">1</span>
+      <h3>Instala la app en tu teléfono</h3>
+      <ol>
+        <li>Abre este link en <b>Chrome</b>, no desde WhatsApp. Si llegó por WhatsApp, toca los ⋮ y elige <b>Abrir en Chrome</b>.</li>
+        <li>Toca ⋮ → <span class="ruta">Agregar a pantalla principal</span> (o <span class="ruta">Instalar app</span>).</li>
+        <li>Desde ahora ábrela siempre desde ese ícono: ahí quedan guardados tus libros.</li>
+      </ol>
+    </section>
+
+    <section class="paso">
+      <span class="num">2</span>
+      <h3>Crea tu cuenta de Kaggle</h3>
+      <ol>
+        <li>Entra a <a href="https://www.kaggle.com" target="_blank" rel="noopener">kaggle.com</a> y toca <b>Register</b>.</li>
+        <li>Lo más fácil: <b>Sign in with Google</b> con tu correo de Gmail.</li>
+        <li>Acepta las condiciones y elige un nombre de usuario. Anótalo, lo vas a necesitar.</li>
+      </ol>
+    </section>
+
+    <section class="paso">
+      <span class="num">3</span>
+      <h3>Verifica tu teléfono en Kaggle</h3>
+      <p>Sin este paso Kaggle no presta la tarjeta gráfica que crea la voz.</p>
+      <ol>
+        <li>En Kaggle toca tu foto (arriba a la derecha) → <span class="ruta">Settings</span>.</li>
+        <li>En <span class="ruta">Account</span> busca <b>Phone verification</b> y pon tu número.</li>
+        <li>Escribe el código que te llega por SMS.</li>
+      </ol>
+    </section>
+
+    <section class="paso">
+      <span class="num">4</span>
+      <h3>Saca tu clave (token)</h3>
+      <ol>
+        <li>En <span class="ruta">Settings</span> entra a la pestaña <span class="ruta">API Tokens</span>.</li>
+        <li>Toca <b>Generate New Token</b> y ponle un nombre, por ejemplo "audiolibro".</li>
+        <li>Copia el texto que empieza con <code>KGAT_</code>. Kaggle lo muestra <b>una sola vez</b>: no cierres la ventana hasta pegarlo en la app (paso 5). Si se te cerró, genera otro.</li>
+      </ol>
+    </section>
+
+    <section class="paso">
+      <span class="num">5</span>
+      <h3>Conecta la app con tu cuenta</h3>
+      <ol>
+        <li>En la app toca <span class="ruta">Cuenta de Kaggle</span>.</li>
+        <li><b>Usuario:</b> tu nombre de usuario de Kaggle. Es lo que aparece después de <code>kaggle.com/</code> en tu perfil.</li>
+        <li><b>Clave (API key):</b> pega el texto <code>KGAT_…</code>.</li>
+        <li>Toca <b>Probar y guardar</b>. Si dice que funcionó, ¡listo!</li>
+      </ol>
+    </section>
+
+    <section class="paso">
+      <span class="num">6</span>
+      <h3>Crea tu primer audiolibro</h3>
+      <ol>
+        <li>Toca <span class="ruta">Generar</span> y elige un libro EPUB.</li>
+        <li>Elige la voz: describe cómo quieres que suene o sube un audio corto.</li>
+        <li>Kaggle trabaja solo, aunque cierres la app o apagues el teléfono. Un libro completo tarda unas 7 a 9 horas.</li>
+        <li>Entra al libro y toca <b>Actualizar</b> para ver cuánto lleva. Cuando termine, toca <b>Descargar</b>, y a escuchar.</li>
+      </ol>
+    </section>
+
+    <div class="aviso-guia">
+      <b>Para empezar, un libro corto</b>
+      Así ves cómo suena la voz antes de esperar horas. Kaggle da unas 30 horas gratis de tarjeta gráfica por semana: alcanza para 3 o 4 libros semanales.
+    </div>
+
+    <div class="aviso-guia cuidado">
+      <b>Tu clave es solo tuya</b>
+      No se la mandes a nadie. Queda guardada solo en tu teléfono, y con ella cualquiera podría usar tu cuenta de Kaggle. Si crees que alguien la vio, en Kaggle → API Tokens toca <b>Expire All Tokens</b> y genera una nueva.
+    </div>
+
+    <div class="aviso-guia">
+      <b>Voces con permiso</b>
+      Si subes un audio para copiar una voz, que sea la tuya o la de alguien que te dio permiso. Usa la app con libros que tengas.
+    </div>
+
+    <div class="aviso-guia">
+      <b>Espacio en el teléfono</b>
+      Un audiolibro pesa varios cientos de MB. Si el teléfono se llena, Android puede borrar los libros de la app: deja espacio libre y borra los que ya terminaste.
+    </div>
+
+    <a class="ir-app" href="./">Ir a la app</a>
+  </main>
+</body>
+</html>

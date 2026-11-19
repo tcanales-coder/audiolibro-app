@@ -32,6 +32,7 @@
     <button id="btn-generar" class="boton-principal">+ Crear audiolibro desde un EPUB</button>
     <button id="btn-agregar" class="boton-secundario">Agregar audios que ya tengo</button>
     <button id="btn-cuenta" class="enlace">Cuenta de Kaggle</button>
+    <a href="guia.html" class="enlace guia-link">¿Primera vez? Mira la guía para empezar</a>
     <input id="entrada-archivos" type="file" multiple
            accept="audio/*,.mp3,.m4a,.m4b,.aac,.ogg,.wav,.zip,.json" hidden>
     <p class="nota" id="nota-espacio"></p>
@@ -111,16 +112,8 @@
     <form method="dialog" id="form-cuenta">
       <h2>Tu cuenta de Kaggle</h2>
       <p class="nota">El audio se genera gratis con tu propia cuenta de Kaggle. Tu clave queda guardada solo en este teléfono.</p>
-      <details class="ayuda">
-        <summary>¿Dónde consigo la clave?</summary>
-        <ol>
-          <li>Entra a kaggle.com → tu foto → <b>Settings</b>.</li>
-          <li>En <b>API</b>, toca <b>Create New Token</b>. Se descarga <b>kaggle.json</b>.</li>
-          <li>Aquí abajo toca <b>Usar kaggle.json</b> y elígelo.</li>
-        </ol>
-        <p>Tu cuenta de Kaggle debe tener el teléfono verificado para poder usar GPU e internet.</p>
-      </details>
-      <button type="button" id="btn-kaggle-json" class="boton-secundario">Usar kaggle.json</button>
+      <p class="nota"><a href="guia.html">¿Cómo saco mi usuario y clave? Ver la guía paso a paso</a></p>
+      <button type="button" id="btn-kaggle-json" class="boton-secundario" hidden>Usar kaggle.json</button>
       <input id="entrada-kaggle-json" type="file" accept=".json,application/json" hidden>
       <label for="in-usuario">Usuario</label>
       <input id="in-usuario" autocomplete="off" autocapitalize="off" spellcheck="false">

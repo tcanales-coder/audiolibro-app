@@ -1,9 +1,9 @@
 // Guarda la app en el teléfono para que abra sin internet.
-const VERSION = "audiolibro-v9";
+const VERSION = "audiolibro-v10";
 const ARCHIVOS = [
   "./", "index.html", "styles.css", "app.js", "db.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "kaggle.js",
-  "vendor/fflate-0.8.2.js",
+  "vendor/fflate-0.8.2.js", "guia.html",
 ];
 
 self.addEventListener("install", e => {
