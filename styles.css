@@ -273,3 +273,6 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 .tarjeta .generando { color: var(--acento); font-weight: 600; }
 .opcion-voz[hidden] { display: none !important; }
 .guia-link { text-align: center; color: var(--acento); font-weight: 600; }
+
+.gen-muestra { display: grid; gap: 10px; margin: 8px 0 14px; }
+.gen-muestra audio { width: 100%; }

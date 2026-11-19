@@ -141,14 +141,15 @@ const KAGGLE = (() => {
   }
 
   // ---------- notebook ----------
-  async function prepararNotebook({ epub, voz, descripcion }) {
+  // prueba=true: el notebook solo crea la voz y unos segundos del libro (prueba.wav) para escucharla
+  async function prepararNotebook({ epub, voz, descripcion }, prueba = false) {
     const nb = await (await fetch("kaggle/plantilla.ipynb", { cache: "no-cache" })).json();
     const cfg = nb.cells.find(c => c.cell_type === "code" && /PRUEBA\s*=/.test([].concat(c.source).join("")));
     let src = [].concat(cfg.source).join("");
     const linea = (nombre, valor) => {
       src = src.replace(new RegExp(`^(${nombre}\\s*=\\s*)([^#\\n]*?)(\\s*#@param.*)?$`, "m"), (_, a, __, c) => a + valor + (c || ""));
     };
-    linea("PRUEBA", "False");
+    linea("PRUEBA", prueba ? "True" : "False");
     linea("ARCHIVO_EPUB", JSON.stringify(epub));
     linea("MODO_VOZ", JSON.stringify(voz ? "clonar" : "diseñar"));
     linea("AUDIO_PARA_CLONAR", JSON.stringify(voz || ""));
@@ -221,6 +222,7 @@ const KAGGLE = (() => {
       capitulosTotales: total ? parseInt(total) : null,
       pausado: /Pausado: vuelve a ejecutar/.test(t),
       terminado: /¡Listo!/.test(t),
+      estimacionHoras: (m => m ? parseFloat(m[1]) : null)(t.match(/libro completo en esta GPU: ~([\d.]+) horas/)),
     };
   }
 

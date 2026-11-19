@@ -778,13 +778,18 @@ function seguirTexto(forzar = false) {
 }
 
 // ---------- etapa 2: generar en Kaggle ----------
-const generacion = { epub: null, epubInfo: null, voz: null, reloj: 0, libro: null };
+const generacion = { epub: null, epubInfo: null, voz: null, reloj: 0, libro: null, otraVoz: null };
 const ESTADOS = {
   SUBIENDO: "Subiendo a Kaggle…", QUEUED: "En la fila de Kaggle", RUNNING: "Generando el audio",
   COMPLETE: "¡Terminado!", ERROR: "Kaggle tuvo un error", CANCEL_REQUESTED: "Cancelado", CANCEL_ACKNOWLEDGED: "Cancelado",
 };
 function textoEstadoCorto(g) {
   if (g.descargado) return "Descargando…";
+  if (g.fase === "muestra") {
+    if (g.muestraLista) return "Muestra de voz lista: escúchala";
+    if (g.estado === "ERROR") return ESTADOS.ERROR;
+    return "Creando una muestra de la voz…";
+  }
   const base = ESTADOS[g.estado] || "Generando";
   if (g.estado === "RUNNING" && g.horasRestantes != null) return `${base} · quedan ~${String(g.horasRestantes).replace(".", ",")} h`;
   return base;
@@ -836,14 +841,22 @@ async function leerKaggleJson(archivo) {
 }
 
 // --- formulario de nuevo libro ---
-async function abrirGenerar() {
+async function abrirGenerar(otraVoz = null) {
   if (!KAGGLE.listo()) return abrirCuenta("Primero conecta tu cuenta de Kaggle (solo una vez).");
-  generacion.epub = null; generacion.voz = null;
+  generacion.otraVoz = otraVoz;          // libro al que se le prueba otra voz (sin volver a elegir EPUB)
+  $("bloque-libro-gen").hidden = !!otraVoz;
+  $("btn-gen-directo").hidden = !!otraVoz;
+  $("gen-titulo-dlg").textContent = otraVoz ? "Probar otra voz" : "Crear audiolibro";
+  $("btn-gen-iniciar").textContent = otraVoz ? "Crear nueva muestra" : "Escuchar una muestra";
+  $("btn-gen-directo").disabled = false;
+  if (!otraVoz) generacion.epub = null;
+  generacion.voz = null;
   $("gen-epub-info").textContent = "";
   $("in-titulo-gen").value = "";
   $("gen-voz-info").textContent = "";
   $("gen-mensaje").textContent = ""; $("gen-mensaje").classList.remove("error");
   $("btn-gen-iniciar").disabled = false;
+  if (otraVoz && otraVoz.generando.config.descripcion) $("in-descripcion").value = otraVoz.generando.config.descripcion;
   const guardada = leerPref("vozGuardadaNombre", "");
   $("voz-guardada").closest("label").hidden = !guardada;
   $("txt-voz-guardada").textContent = guardada ? `Mi voz guardada (${guardada})` : "";
@@ -876,48 +889,56 @@ function nombreSeguro(n) {
   return base + ext;
 }
 
-async function iniciarGeneracion() {
-  const msg = t => { $("gen-mensaje").textContent = t; };
-  const fallo = t => { $("gen-mensaje").textContent = t; $("gen-mensaje").classList.add("error"); $("btn-gen-iniciar").disabled = false; };
-  $("gen-mensaje").classList.remove("error");
-  if (!generacion.epub) return fallo("Elige primero el EPUB.");
-  const titulo = $("in-titulo-gen").value.trim() || generacion.epub.name.replace(/\.epub$/i, "");
+// Lee la voz elegida en el diálogo. Devuelve { voz: File|null, descripcion } o lanza un error.
+async function leerVozElegida() {
   const tipoVoz = document.querySelector('input[name="voz"]:checked')?.value;
-
-  // la voz
-  let voz = null, descripcion = "";
   if (tipoVoz === "guardada") {
     const blob = await BD.archivo("voz-guardada");
-    if (!blob) return fallo("No encontré la voz guardada. Elige un audio.");
-    voz = new File([blob], leerPref("vozGuardadaNombre", "voz.wav"), { type: blob.type });
-  } else if (tipoVoz === "archivo") {
-    if (!generacion.voz) return fallo("Elige el audio de la voz.");
-    voz = generacion.voz;
-    if ($("chk-recordar-voz").checked) {
-      await BD.guardarArchivo("voz-guardada", voz);
-      guardarPref("vozGuardadaNombre", nombreSeguro(voz.name));
-    }
-  } else {
-    descripcion = $("in-descripcion").value.trim();
-    if (!descripcion) return fallo("Escribe cómo quieres que suene la voz.");
+    if (!blob) throw new Error("No encontré la voz guardada. Elige un audio.");
+    return { voz: new File([blob], leerPref("vozGuardadaNombre", "voz.wav"), { type: blob.type }), descripcion: "" };
   }
+  if (tipoVoz === "archivo") {
+    if (!generacion.voz) throw new Error("Elige el audio de la voz.");
+    if ($("chk-recordar-voz").checked) {
+      await BD.guardarArchivo("voz-guardada", generacion.voz);
+      guardarPref("vozGuardadaNombre", nombreSeguro(generacion.voz.name));
+    }
+    return { voz: generacion.voz, descripcion: "" };
+  }
+  const descripcion = $("in-descripcion").value.trim();
+  if (!descripcion) throw new Error("Escribe cómo quieres que suene la voz.");
+  return { voz: null, descripcion };
+}
 
-  $("btn-gen-iniciar").disabled = true;
+// conMuestra=true: primero una muestra corta de la voz; el libro completo se lanza al confirmarla.
+async function iniciarGeneracion(conMuestra = true) {
+  const msg = t => { $("gen-mensaje").textContent = t; };
+  const botones = on => { $("btn-gen-iniciar").disabled = !on; $("btn-gen-directo").disabled = !on; };
+  const fallo = t => { $("gen-mensaje").textContent = t; $("gen-mensaje").classList.add("error"); botones(true); };
+  $("gen-mensaje").classList.remove("error");
+  if (generacion.otraVoz) return nuevaMuestra(generacion.otraVoz, msg, fallo, botones);
+  if (!generacion.epub) return fallo("Elige primero el EPUB.");
+  const titulo = $("in-titulo-gen").value.trim() || generacion.epub.name.replace(/\.epub$/i, "");
+  let voz, descripcion;
+  try { ({ voz, descripcion } = await leerVozElegida()); } catch (e) { return fallo(e.message); }
+
+  botones(false);
   const id = idCorto();
-  const slugKernel = `audiolibro-${id}`;
+  const slugKernel = conMuestra ? `audiolibro-${id}-voz1` : `audiolibro-${id}`;
   let slugDataset = `audiolibro-${id}-entrada`;
   let usuario = KAGGLE.ajustes().usuario;
   const nombreEpub = nombreSeguro(generacion.epub.name);
   const archivos = [[nombreEpub, generacion.epub]];
   const nombreVoz = voz ? nombreSeguro(voz.name) : "";
   if (voz) archivos.push([nombreVoz, voz]);
+  const config = { epub: nombreEpub, voz: nombreVoz, descripcion };
 
   try {
     ({ usuario, slug: slugDataset } = await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg));
-    msg("Lanzando el notebook con GPU…");
-    var config = { epub: nombreEpub, voz: nombreVoz, descripcion };
-    const texto = await KAGGLE.prepararNotebook(config);
-    await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${id}`, texto, { datasets: [`${usuario}/${slugDataset}`] });
+    msg(conMuestra ? "Pidiendo la muestra de voz a Kaggle…" : "Lanzando el notebook con GPU…");
+    const texto = await KAGGLE.prepararNotebook(config, conMuestra);
+    await KAGGLE.lanzarNotebook(slugKernel, conMuestra ? `Audiolibro ${id} voz 1` : `Audiolibro ${id}`, texto,
+      { datasets: [`${usuario}/${slugDataset}`] });
   } catch (e) {
     return fallo("No se pudo: " + e.message);
   }
@@ -925,13 +946,72 @@ async function iniciarGeneracion() {
   const libro = {
     id: uid(), titulo, creado: Date.now(), pistas: [], pos: { pista: 0, tiempo: 0 }, terminado: false,
     generando: {
-      kernel: slugKernel, partes: [slugKernel], dataset: slugDataset, usuario, estado: "QUEUED",
+      fase: conMuestra ? "muestra" : "libro", idKaggle: id, nMuestra: conMuestra ? 1 : 0,
+      kernel: slugKernel, partes: conMuestra ? [] : [slugKernel],
+      dataset: slugDataset, datasets: [slugDataset], usuario, estado: "QUEUED",
       inicio: Date.now(), config,
     },
   };
   await BD.guardarLibro(libro);
-  msg("¡Listo! Kaggle empezó a generar tu libro.");
+  msg(conMuestra ? "¡Listo! Kaggle está creando la muestra de la voz." : "¡Listo! Kaggle empezó a generar tu libro.");
   setTimeout(() => { $("dlg-generar").close(); abrirGenerando(libro); }, 900);
+}
+
+// Otra muestra para el mismo libro: el EPUB ya está en Kaggle; solo se sube la voz nueva (si es un audio).
+async function nuevaMuestra(l, msg, fallo, botones) {
+  const g = l.generando;
+  let voz, descripcion;
+  try { ({ voz, descripcion } = await leerVozElegida()); } catch (e) { return fallo(e.message); }
+  botones(false);
+  const n = (g.nMuestra || 1) + 1;
+  const slugKernel = `audiolibro-${g.idKaggle}-voz${n}`;
+  const config = { ...g.config, voz: "", descripcion };
+  const datasets = [...(g.datasets || [g.dataset])];
+  try {
+    if (voz) {
+      // nombre único para no confundirla con la voz de la muestra anterior
+      config.voz = `voz${n}_${nombreSeguro(voz.name)}`;
+      const r = await KAGGLE.crearDataset(`audiolibro-${g.idKaggle}-voz${n}`, `Audiolibro ${g.idKaggle} voz ${n}`, [[config.voz, voz]], msg);
+      datasets.push(r.slug);
+    }
+    msg("Pidiendo la nueva muestra a Kaggle…");
+    const texto = await KAGGLE.prepararNotebook(config, true);
+    await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${g.idKaggle} voz ${n}`, texto,
+      { datasets: datasets.map(d => `${g.usuario}/${d}`) });
+  } catch (e) {
+    return fallo("No se pudo: " + e.message);
+  }
+  try { await BD.borrarArchivo("muestra-" + l.id); } catch {}
+  Object.assign(g, { fase: "muestra", nMuestra: n, kernel: slugKernel, datasets, config, estado: "QUEUED",
+                     muestraLista: false, error: "", estimacionHoras: null });
+  await BD.guardarLibro(l);
+  msg("¡Listo! Kaggle está creando la nueva muestra.");
+  setTimeout(() => { $("dlg-generar").close(); abrirGenerando(l); }, 900);
+}
+
+// La persona escuchó la muestra y le gustó: el libro completo usa esa misma voz
+// (la salida de la muestra entra al notebook, que reutiliza su voz_referencia.wav).
+async function confirmarMuestra() {
+  const l = generacion.libro, g = l.generando;
+  const slug = `audiolibro-${g.idKaggle}`;
+  $("btn-muestra-ok").disabled = true;
+  pintarGenerando("Lanzando el libro completo…");
+  try {
+    const texto = await KAGGLE.prepararNotebook(g.config, false);
+    await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.idKaggle}`, texto, {
+      datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`),
+      kernels: [`${g.usuario}/${g.kernel}`],
+    });
+  } catch (e) {
+    $("btn-muestra-ok").disabled = false;
+    return pintarGenerando("No se pudo lanzar el libro: " + e.message);
+  }
+  try { await BD.borrarArchivo("muestra-" + l.id); } catch {}
+  Object.assign(g, { fase: "libro", kernel: slug, partes: [slug], estado: "QUEUED", muestraLista: false, inicio: Date.now() });
+  $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${slug}`;
+  $("btn-muestra-ok").disabled = false;
+  await BD.guardarLibro(l);
+  pintarGenerando();
 }
 
 // --- seguimiento ---
@@ -954,8 +1034,19 @@ function pintarGenerando(detalle) {
   const g = generacion.libro.generando;
   const icono = $("gen-icono");
   icono.className = "gen-icono" + (g.estado === "COMPLETE" ? " listo" : g.estado === "ERROR" ? " error" : " girando");
-  $("gen-estado").textContent = g.pausado ? "Kaggle hizo una pausa" : (ESTADOS[g.estado] || "Generando");
+  const muestra = g.fase === "muestra";
+  $("gen-estado").textContent = muestra
+    ? (g.muestraLista ? "Escucha la muestra" : g.estado === "ERROR" ? ESTADOS.ERROR : g.estado === "QUEUED" ? "En la fila de Kaggle" : "Creando una muestra de la voz")
+    : g.pausado ? "Kaggle hizo una pausa" : (ESTADOS[g.estado] || "Generando");
+  if (muestra && g.muestraLista) icono.className = "gen-icono listo";
   let d = detalle || "";
+  if (!d && muestra) {
+    if (g.muestraLista) d = "Así suena la voz con tu libro. Si te gusta, genera el libro completo" +
+      (g.estimacionHoras ? ` (unas ${Math.max(1, Math.round(g.estimacionHoras))} h en Kaggle).` : ".") + " Si no, prueba otra voz.";
+    else if (g.estado === "QUEUED") d = "Esperando una GPU libre. Suele tardar unos minutos.";
+    else if (g.estado === "ERROR") d = g.error || "Abre Kaggle para ver el detalle.";
+    else d = "Kaggle instala y carga la voz, y lee unos segundos del libro. Suele tardar 10 a 20 minutos.";
+  }
   if (!d) {
     if (g.estado === "QUEUED") d = "Esperando una GPU libre. Suele tardar unos minutos.";
     else if (g.estado === "RUNNING") {
@@ -975,13 +1066,26 @@ function pintarGenerando(detalle) {
   const pct = g.estado === "COMPLETE" && !g.pausado ? 100
     : (g.capitulosListos && g.capitulosTotales ? Math.round(g.capitulosListos / g.capitulosTotales * 100) : (g.estado === "RUNNING" ? 3 : 0));
   $("gen-barra").style.width = pct + "%";
-  $("btn-gen-descargar").hidden = !(g.estado === "COMPLETE" && !g.pausado);
-  $("btn-gen-continuar").hidden = !(g.estado === "COMPLETE" && g.pausado);
-  $("btn-gen-actualizar").hidden = g.estado === "COMPLETE";
+  $("btn-gen-descargar").hidden = muestra || !(g.estado === "COMPLETE" && !g.pausado);
+  $("btn-gen-continuar").hidden = muestra || !(g.estado === "COMPLETE" && g.pausado);
+  $("btn-gen-actualizar").hidden = muestra ? !!g.muestraLista : g.estado === "COMPLETE";
+  $("gen-muestra").hidden = !(muestra && (g.muestraLista || g.estado === "ERROR"));
+  $("audio-muestra").hidden = !g.muestraLista;
+  $("btn-muestra-ok").hidden = !g.muestraLista;
+  if (muestra) $("gen-barra").style.width = g.muestraLista ? "100%" : g.estado === "RUNNING" ? "30%" : "5%";
+}
+async function pintarAudioMuestra() {
+  const a = $("audio-muestra");
+  if (a.dataset.libro === generacion.libro.id && a.src) return;
+  const blob = await BD.archivo("muestra-" + generacion.libro.id);
+  if (a.src) URL.revokeObjectURL(a.src);
+  a.removeAttribute("src");
+  if (blob) { a.src = URL.createObjectURL(blob); a.dataset.libro = generacion.libro.id; }
 }
 
 async function actualizarGenerando() {
   const l = generacion.libro, g = l.generando;
+  if (g.fase === "muestra" && g.muestraLista) { pintarGenerando(); return pintarAudioMuestra(); }
   $("btn-gen-actualizar").disabled = true;
   try {
     const st = await KAGGLE.estado(g.kernel);
@@ -993,6 +1097,18 @@ async function actualizarGenerando() {
         capitulosListos: av.capitulosListos || g.capitulosListos || 0,
         capitulosTotales: av.capitulosTotales || g.capitulosTotales,
       });
+    } else if (g.estado === "COMPLETE" && g.fase === "muestra") {
+      const salida = await KAGGLE.archivosDeSalida(g.kernel);
+      const f = salida.archivos.find(x => /(^|\/)prueba\.wav$/i.test(x.fileName));
+      if (!f) { g.estado = "ERROR"; g.error = "Kaggle terminó pero no dejó la muestra. Prueba otra vez."; }
+      else {
+        pintarGenerando("Descargando la muestra…");
+        const blob = await KAGGLE.descargar(f.url);
+        await BD.guardarArchivo("muestra-" + l.id, new Blob([blob], { type: "audio/wav" }));
+        g.muestraLista = true;
+        g.estimacionHoras = salida.registro && salida.registro.estimacionHoras;
+        $("audio-muestra").dataset.libro = "";
+      }
     } else if (g.estado === "COMPLETE") {
       const salida = await KAGGLE.archivosDeSalida(g.kernel);
       g.pausado = !!(salida.registro && salida.registro.pausado);
@@ -1000,6 +1116,7 @@ async function actualizarGenerando() {
     }
     await BD.guardarLibro(l);
     pintarGenerando();
+    if (g.muestraLista) await pintarAudioMuestra();
   } catch (e) {
     pintarGenerando("No pude consultar a Kaggle: " + e.message);
   } finally {
@@ -1157,7 +1274,7 @@ iniciarGestosLectura();
 ["touchmove", "wheel"].forEach(ev => $("panel-texto").addEventListener(ev, () => { lectura.manualHasta = Date.now() + 6000; }, { passive: true }));
 $("portada").onclick = () => $("entrada-portada").click();
 $("entrada-portada").onchange = e => { const f = e.target.files[0]; e.target.value = ""; cambiarPortada(f); };
-$("btn-generar").onclick = abrirGenerar;
+$("btn-generar").onclick = () => abrirGenerar();
 $("btn-cuenta").onclick = () => abrirCuenta();
 $("btn-cuenta-guardar").onclick = guardarCuenta;
 $("btn-kaggle-json").onclick = () => $("entrada-kaggle-json").click();
@@ -1172,7 +1289,10 @@ $("entrada-voz").onchange = e => {
   $("gen-voz-info").textContent = `${f.name} · ${Math.round(f.size / 1024)} KB`;
 };
 document.querySelectorAll('input[name="voz"]').forEach(r => r.onchange = pintarOpcionesVoz);
-$("btn-gen-iniciar").onclick = iniciarGeneracion;
+$("btn-gen-iniciar").onclick = () => iniciarGeneracion(true);
+$("btn-gen-directo").onclick = () => iniciarGeneracion(false);
+$("btn-muestra-ok").onclick = confirmarMuestra;
+$("btn-muestra-otra").onclick = () => abrirGenerar(generacion.libro);
 $("btn-gen-actualizar").onclick = actualizarGenerando;
 $("btn-gen-descargar").onclick = descargarGenerado;
 $("btn-gen-continuar").onclick = continuarGeneracion;
@@ -1181,6 +1301,7 @@ $("btn-gen-borrar").onclick = async () => {
   dlg.showModal();
   dlg.addEventListener("close", async () => {
     if (dlg.returnValue !== "ok") return;
+    try { await BD.borrarArchivo("muestra-" + generacion.libro.id); } catch {}
     await BD.borrarLibro(generacion.libro);
     mostrarBiblioteca();
   }, { once: true });
