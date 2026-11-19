@@ -35,15 +35,28 @@ const KAGGLE = (() => {
     let datos = null;
     try { datos = texto ? JSON.parse(texto) : {}; } catch { datos = { mensaje: texto }; }
     if (!r.ok || (datos && datos.code >= 400)) {
-      let msg = (datos && (datos.message || datos.error || datos.mensaje)) || "";
+      let msg = textoError(datos);
       if (/^\s*</.test(msg)) msg = "respuesta en HTML: " + (msg.match(/<title>([^<]*)/i) || [, "página web"])[1].trim();
-      msg = `HTTP ${r.status}${msg ? " · " + String(msg).slice(0, 160) : ""}`;
-      const e = new Error(r.status === 401 || r.status === 403 ? "Kaggle no aceptó la clave (" + msg + ")" : msg);
+      msg = `HTTP ${r.status}${msg ? " · " + msg.slice(0, 200) : ""}`;
+      const e = new Error(
+        r.status === 401 ? "Kaggle no aceptó la clave (" + msg + ")" :
+        r.status === 403 ? `Kaggle no dio permiso en el paso ${metodo} (${msg})` :
+        `${metodo}: ${msg}`);
       e.status = r.status;
       throw e;
     }
-    if (datos && datos.error) throw new Error(datos.error);
+    if (datos && datos.error) throw new Error(`${metodo}: ${textoError(datos.error)}`);
     return datos;
+  }
+  // Kaggle a veces manda el error como texto y a veces como objeto ({code, message, status, details})
+  function textoError(x) {
+    if (x == null) return "";
+    if (typeof x === "string") return x;
+    if (typeof x !== "object") return String(x);
+    const dentro = x.error && typeof x.error === "object" ? x.error : null;
+    if (dentro) return textoError(dentro);
+    const partes = [x.message || x.mensaje || (typeof x.error === "string" ? x.error : ""), x.status && x.status !== x.message ? x.status : ""].filter(Boolean);
+    return partes.length ? partes.join(" · ") : JSON.stringify(x).slice(0, 200);
   }
   const viaIntermediario = url => `${intermediario()}/archivo?url=${encodeURIComponent(url)}`;
 
@@ -56,7 +69,7 @@ const KAGGLE = (() => {
     let r;
     try { r = await api("security.OAuthService", "IntrospectToken", { token: a.clave }); }
     catch (e) {
-      if (e.status === 401 || e.status === 403) throw new Error("Kaggle no aceptó la clave. Genera un token nuevo y pégalo completo.");
+      if (e.status === 401) throw new Error("Kaggle no aceptó la clave. Genera un token nuevo y pégalo completo.");
       if (a.usuario) return a.usuario;      // si Kaggle no responde a esto, seguimos con lo escrito
       throw e;
     }
