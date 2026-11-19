@@ -35,7 +35,9 @@ const KAGGLE = (() => {
     let datos = null;
     try { datos = texto ? JSON.parse(texto) : {}; } catch { datos = { mensaje: texto }; }
     if (!r.ok || (datos && datos.code >= 400)) {
-      const msg = (datos && (datos.message || datos.error || datos.mensaje)) || `HTTP ${r.status}`;
+      let msg = (datos && (datos.message || datos.error || datos.mensaje)) || "";
+      if (/^\s*</.test(msg)) msg = "respuesta en HTML: " + (msg.match(/<title>([^<]*)/i) || [, "página web"])[1].trim();
+      msg = `HTTP ${r.status}${msg ? " · " + String(msg).slice(0, 160) : ""}`;
       const e = new Error(r.status === 401 || r.status === 403 ? "Kaggle no aceptó la clave (" + msg + ")" : msg);
       e.status = r.status;
       throw e;
