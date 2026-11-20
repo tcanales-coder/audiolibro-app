@@ -142,7 +142,8 @@ const KAGGLE = (() => {
 
   // ---------- notebook ----------
   // prueba=true: el notebook solo crea la voz y unos segundos del libro (prueba.wav) para escucharla
-  async function prepararNotebook({ epub, voz, descripcion }, prueba = false) {
+  // capitulos: "" = todos; "primero" = solo el primer capítulo (para empezar a escuchar antes)
+  async function prepararNotebook({ epub, voz, descripcion }, prueba = false, capitulos = "") {
     const nb = await (await fetch("kaggle/plantilla.ipynb", { cache: "no-cache" })).json();
     const cfg = nb.cells.find(c => c.cell_type === "code" && /PRUEBA\s*=/.test([].concat(c.source).join("")));
     let src = [].concat(cfg.source).join("");
@@ -155,6 +156,7 @@ const KAGGLE = (() => {
     linea("AUDIO_PARA_CLONAR", JSON.stringify(voz || ""));
     if (descripcion) linea("DESCRIPCION_VOZ", JSON.stringify(descripcion));
     linea("UN_SOLO_ARCHIVO_M4B", "False");
+    linea("CAPITULOS", JSON.stringify(capitulos));
     cfg.source = src;
     for (const c of nb.cells) {
       if (Array.isArray(c.source)) c.source = c.source.join("");
@@ -239,6 +241,15 @@ const KAGGLE = (() => {
     return { archivos, registro: interpretarRegistro(log) };
   }
 
+  // Horas de GPU de la semana. Kaggle manda las duraciones como "12345.5s".
+  async function cuota() {
+    const r = await api("kernels.KernelsApiService", "GetAcceleratorQuotaStatistics", {});
+    const h = v => (v ? parseFloat(String(v)) / 3600 : 0);
+    const g = r.gpuQuota || {};
+    return { usadas: h(g.timeUsed), reservadas: h(g.timeReserved), total: h(g.totalTimeAllowed) || 30,
+             renueva: r.quotaRefreshTime ? new Date(r.quotaRefreshTime) : null };
+  }
+
   async function descargar(url) {
     const r = await fetch(viaIntermediario(url));
     if (!r.ok) throw new Error(`No se pudo descargar (HTTP ${r.status})`);
@@ -247,6 +258,6 @@ const KAGGLE = (() => {
 
   return {
     ajustes, guardarAjustes, listo, intermediario, probar, confirmarUsuario, crearDataset,
-    prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar,
+    prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar, cuota,
   };
 })();

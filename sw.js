@@ -1,5 +1,5 @@
 // Guarda la app en el teléfono para que abra sin internet.
-const VERSION = "audiolibro-v15";
+const VERSION = "audiolibro-v16";
 const ARCHIVOS = [
   "./", "index.html", "styles.css", "app.js", "db.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "kaggle.js",
