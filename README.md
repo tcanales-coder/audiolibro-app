@@ -34,3 +34,9 @@ Archivos: `index.html` (pantallas), `app.js` (lógica), `db.js` (almacenamiento 
 - Cada persona conecta **su propia** cuenta de Kaggle (kaggle.json). La clave queda solo en su teléfono.
 - `intermediario/worker.js`: Cloudflare Worker gratuito que pasa los mensajes entre la app y Kaggle (Kaggle no acepta llamadas directas desde una página web). No guarda nada.
 - `kaggle/plantilla.ipynb`: el notebook EPUB → audiolibro con VoxCPM2; la app solo cambia la celda de configuración.
+
+## Comentarios del club (solo Choro y Tinta)
+- En `/choro/`, el reproductor tiene **Comentarios del club**: cada amiga pone su nombre una vez y comenta el libro; todas ven los mismos comentarios. Se puede marcar un comentario como "cuenta algo del final" para que quede oculto hasta tocarlo, y cada una puede borrar los suyos.
+- Un libro se reconoce por su título (sin mayúsculas ni tildes), así que un libro pasado con **Compartir este libro** cae en la misma conversación.
+- `comentarios.js` y `comentarios.css` solo los carga `choro/index.html`; la versión de la familia no los tiene.
+- Se guardan en el mismo intermediario (`intermediario/worker.js`) usando Cloudflare KV gratis. Para activarlo: crear un espacio KV (por ejemplo `comentarios`), enlazarlo al Worker con el nombre de variable `COMENTARIOS` y pegar el código nuevo del Worker.
