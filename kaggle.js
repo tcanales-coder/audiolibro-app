@@ -180,7 +180,10 @@ const KAGGLE = (() => {
       kernelDataSources: fuentes.kernels || [],
     });
     if (r.invalidDatasetSources && r.invalidDatasetSources.length) throw new Error("Kaggle no encontró el EPUB subido: " + r.invalidDatasetSources.join(", "));
-    return r;
+    if (r.error) throw new Error(textoError(r.error));
+    // Kaggle arma la dirección del notebook a partir del título: se usa la que devuelve, no la pedida
+    const real = String(r.ref || r.url || "").split("?")[0].replace(/\/+$/, "").split("/").pop();
+    return { ...r, slug: real || slugKernel };
   }
 
   // ---------- seguimiento ----------

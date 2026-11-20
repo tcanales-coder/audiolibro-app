@@ -1094,7 +1094,7 @@ async function iniciarGeneracion(conMuestra = true) {
 
   botones(false);
   const id = idCorto();
-  const slugKernel = conMuestra ? `audiolibro-${id}-voz1` : `audiolibro-${id}`;
+  let slugKernel = conMuestra ? `audiolibro-${id}-voz1` : `audiolibro-${id}`;
   let slugDataset = `audiolibro-${id}-entrada`;
   let usuario = KAGGLE.ajustes().usuario;
   const nombreEpub = nombreSeguro(generacion.epub.name);
@@ -1109,8 +1109,8 @@ async function iniciarGeneracion(conMuestra = true) {
     ({ usuario, slug: slugDataset } = await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg));
     msg(conMuestra ? "Pidiendo la muestra de voz a Kaggle…" : "Lanzando el notebook con GPU…");
     const texto = await KAGGLE.prepararNotebook(config, conMuestra, primero ? `hasta:${pct}` : "");
-    await KAGGLE.lanzarNotebook(slugKernel, conMuestra ? `Audiolibro ${id} voz 1` : `Audiolibro ${id}`, texto,
-      { datasets: [`${usuario}/${slugDataset}`] });
+    ({ slug: slugKernel } = await KAGGLE.lanzarNotebook(slugKernel, conMuestra ? `Audiolibro ${id} voz1` : `Audiolibro ${id}`, texto,
+      { datasets: [`${usuario}/${slugDataset}`] }));
   } catch (e) {
     return fallo("No se pudo: " + e.message);
   }
@@ -1137,7 +1137,7 @@ async function nuevaMuestra(l, msg, fallo, botones) {
   try { ({ voz, descripcion } = await leerVozElegida()); } catch (e) { return fallo(e.message); }
   botones(false);
   const n = (g.nMuestra || 1) + 1;
-  const slugKernel = `audiolibro-${g.idKaggle}-voz${n}`;
+  let slugKernel = `audiolibro-${g.idKaggle}-voz${n}`;
   const config = { ...g.config, voz: "", descripcion };
   const datasets = [...(g.datasets || [g.dataset])];
   try {
@@ -1149,8 +1149,8 @@ async function nuevaMuestra(l, msg, fallo, botones) {
     }
     msg("Pidiendo la nueva muestra a Kaggle…");
     const texto = await KAGGLE.prepararNotebook(config, true);
-    await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${g.idKaggle} voz ${n}`, texto,
-      { datasets: datasets.map(d => `${g.usuario}/${d}`) });
+    ({ slug: slugKernel } = await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${g.idKaggle} voz${n}`, texto,
+      { datasets: datasets.map(d => `${g.usuario}/${d}`) }));
   } catch (e) {
     return fallo("No se pudo: " + e.message);
   }
@@ -1166,15 +1166,15 @@ async function nuevaMuestra(l, msg, fallo, botones) {
 // (la salida de la muestra entra al notebook, que reutiliza su voz_referencia.wav).
 async function confirmarMuestra() {
   const l = generacion.libro, g = l.generando;
-  const slug = `audiolibro-${g.idKaggle}`;
+  let slug = `audiolibro-${g.idKaggle}`;
   $("btn-muestra-ok").disabled = true;
   pintarGenerando("Lanzando el libro completo…");
   try {
     const texto = await KAGGLE.prepararNotebook(g.config, false, g.modo === "parte" ? `hasta:${g.pct}` : "");
-    await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.idKaggle}`, texto, {
+    ({ slug } = await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.idKaggle}`, texto, {
       datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`),
       kernels: [`${g.usuario}/${g.kernel}`],
-    });
+    }));
   } catch (e) {
     $("btn-muestra-ok").disabled = false;
     return pintarGenerando("No se pudo lanzar el libro: " + e.message);
@@ -1265,12 +1265,25 @@ async function pintarAudioMuestra() {
   if (blob) { a.src = URL.createObjectURL(blob); a.dataset.libro = generacion.libro.id; }
 }
 
+// Muestras lanzadas antes del arreglo: Kaggle las guardó como "…-voz-1" y la app las buscaba como "…-voz1".
+async function estadoKernel(g) {
+  try { return await KAGGLE.estado(g.kernel); }
+  catch (e) {
+    const alt = g.kernel.replace(/-voz(\d+)$/, "-voz-$1");
+    if (alt === g.kernel || !/403|404/.test(e.message)) throw e;
+    const st = await KAGGLE.estado(alt);
+    g.kernel = alt;
+    $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${alt}`;
+    return st;
+  }
+}
+
 async function actualizarGenerando() {
   const l = generacion.libro, g = l.generando;
   if (g.fase === "muestra" && g.muestraLista) { pintarGenerando(); return pintarAudioMuestra(); }
   $("btn-gen-actualizar").disabled = true;
   try {
-    const st = await KAGGLE.estado(g.kernel);
+    const st = await estadoKernel(g);
     g.estado = st.estado; g.error = st.error;
     if (g.estado === "RUNNING") {
       const av = await KAGGLE.avance(g.kernel);
@@ -1310,9 +1323,9 @@ async function actualizarGenerando() {
 // Lanza la siguiente corrida del mismo libro: los capítulos ya hechos llegan como entrada y se saltan.
 async function lanzarSiguienteParte(l) {
   const g = l.generando;
-  const n = g.partes.length + 1, slug = `${g.partes[0]}-p${n}`;
+  const n = g.partes.length + 1;
   const texto = await KAGGLE.prepararNotebook(g.config || { epub: "", voz: "", descripcion: "" }, false, "");
-  await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
+  const { slug } = await KAGGLE.lanzarNotebook(`${g.partes[0]}-p${n}`, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
     { datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`), kernels: [`${g.usuario}/${g.kernel}`] });
   g.partes.push(slug); g.kernel = slug; g.estado = "QUEUED"; g.pausado = false; g.archivos = null;
   await BD.guardarLibro(l);
