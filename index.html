@@ -173,7 +173,13 @@
         <textarea id="in-descripcion" rows="3">A soft-spoken Latin American woman in her early 30s, gentle and calm, warm voice, slow relaxed pace, intimate audiobook narration</textarea>
         <p class="nota">Mejor en inglés: edad, tono, ritmo y acento.</p>
       </div>
-      <label class="opcion-voz" id="fila-por-partes"><input type="checkbox" id="chk-por-partes" checked> Empezar a escuchar apenas esté el primer capítulo</label>
+      <fieldset class="voces" id="modo-generar">
+        <legend>Cómo se entregan los capítulos</legend>
+        <label class="opcion-voz"><input type="radio" name="modo" value="capitulo" checked> Capítulo por capítulo, apenas cada uno esté listo</label>
+        <label class="opcion-voz"><input type="radio" name="modo" value="primero"> El primero apenas esté, y el resto todo junto</label>
+        <label class="opcion-voz"><input type="radio" name="modo" value=""> Todo el libro de una vez</label>
+        <p class="nota" id="nota-modo">Para pasar al capítulo siguiente, la app tiene que estar abierta de vez en cuando. Usa unos minutos más de GPU por capítulo.</p>
+      </fieldset>
       <p class="nota">Usa solo libros que te pertenecen, y voces propias o con permiso.</p>
       <p id="gen-mensaje" class="gen-mensaje" role="status"></p>
       <div class="fila-botones">
