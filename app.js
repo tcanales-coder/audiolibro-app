@@ -460,6 +460,7 @@ async function abrirLibro(id) {
     ol.appendChild(li);
   });
 
+  pintarSegmentos();                        // antes de cargar: si no, quedan los segmentos del libro anterior
   if (yaSonando) {                          // no cortar lo que está sonando (p. ej. llegaron capítulos nuevos)
     [...ol.children].forEach((li, k) => li.classList.toggle("activo", k === estado.pista));
   } else {
@@ -469,10 +470,41 @@ async function abrirLibro(id) {
   actualizarTiempo();
   pintarAvisoGenerando();
   window.scrollTo(0, 0);
+  revisarSiQuedoAMedias(l);
+}
+
+// Libros dados por terminados antes de este arreglo: si Kaggle cortó la última corrida, quedaron incompletos.
+// Se revisa una sola vez por libro mirando el registro de esa corrida.
+async function revisarSiQuedoAMedias(l) {
+  const g = l.generado;
+  if (!g || !g.kernel || g.revisado || !KAGGLE.listo()) return;
+  try {
+    const { registro } = await KAGGLE.archivosDeSalida(g.kernel);
+    g.revisado = true;
+    if (registro) {
+      if (registro.capitulosTotales) g.capitulosTotales = registro.capitulosTotales;
+      g.aMedias = registro.cortado || registro.pausado || (!!registro.capitulosTotales && l.pistas.length < registro.capitulosTotales);
+    }
+    await BD.guardarLibro(l);
+    if (estado.libro === l) pintarAvisoGenerando();
+  } catch {}
+}
+
+// "Generar lo que falta": el libro vuelve a generarse desde donde quedó (los capítulos hechos no se repiten).
+async function seguirLibroAMedias(l) {
+  const g = { ...l.generado, aMedias: false, revisado: false, etapa: "resto", estado: "COMPLETE", pausado: true };
+  l.generando = g; delete l.generado;
+  await BD.guardarLibro(l);
+  abrirGenerando(l);
+  pintarGenerando("Lanzando lo que falta…");
+  try { await lanzarSiguienteParte(l); pintarGenerando(); }
+  catch (e) { pintarGenerando("No se pudo seguir: " + e.message + ". Toca Continuar para reintentar."); }
 }
 function pintarAvisoGenerando() {
   const l = estado.libro, g = l && l.generando, a = $("aviso-generando");
-  a.hidden = !g;
+  const medias = l && !g && l.generado && l.generado.aMedias;
+  a.hidden = !g && !medias;
+  if (medias) a.textContent = `⚠️ Este libro quedó a medias: tienes ${l.pistas.length}${l.generado.capitulosTotales ? ` de ${l.generado.capitulosTotales}` : ""} capítulos. Toca para generar lo que falta.`;
   if (g) a.textContent = `⏳ ${textoEstadoCorto(g)}. Llevas ${l.pistas.length} ${l.pistas.length === 1 ? "capítulo" : "capítulos"} para escuchar · Ver avance`;
 }
 
@@ -553,7 +585,7 @@ async function guardarPosicion(forzar = false) {
 function durPista(i) {
   const l = estado.libro;
   if (i === estado.pista && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
-  return l.pistas[i].duracion || 0;
+  return (l.pistas[i] && l.pistas[i].duracion) || 0;
 }
 function inicioPista(i) { let s = 0; for (let k = 0; k < i; k++) s += durPista(k); return s; }
 function totalLibro() { return inicioPista(estado.libro.pistas.length); }
@@ -950,6 +982,7 @@ function textoEstadoCorto(g) {
     if (g.estado === "COMPLETE" && !g.pausado) return "Segunda parte lista: bajándola…";
     if (g.estado === "ERROR") return "Segunda parte: Kaggle tuvo un error";
   }
+  if (g.estado === "COMPLETE" && g.pausado) return "Se detuvo antes de terminar · toca para seguir";
   const base = ESTADOS[g.estado] || "Generando";
   if (g.estado === "RUNNING" && g.horasRestantes != null) return `${base} · quedan ~${String(g.horasRestantes).replace(".", ",")} h`;
   return base;
@@ -1223,7 +1256,7 @@ function pintarGenerando(detalle) {
   const muestra = g.fase === "muestra";
   $("gen-estado").textContent = muestra
     ? (g.muestraLista ? "Escucha la muestra" : g.estado === "ERROR" ? ESTADOS.ERROR : g.estado === "QUEUED" ? "En la fila de Kaggle" : "Creando una muestra de la voz")
-    : g.pausado ? "Kaggle hizo una pausa" : (ESTADOS[g.estado] || "Generando");
+    : g.pausado ? (g.cortado ? "Se detuvo antes de terminar" : "Kaggle hizo una pausa") : (ESTADOS[g.estado] || "Generando");
   if (muestra && g.muestraLista) icono.className = "gen-icono listo";
   let d = detalle || "";
   if (!d && muestra) {
@@ -1244,7 +1277,9 @@ function pintarGenerando(detalle) {
       }
       d = partes.join(" · ") || "Instalando y cargando la voz (los primeros 10–15 minutos).";
     } else if (g.estado === "COMPLETE") d = g.pausado
-      ? "Kaggle llega a un máximo de horas por corrida. Toca Continuar y sigue desde donde quedó."
+      ? (g.cortado
+        ? `Kaggle cortó antes de terminar, casi siempre porque se acabaron las horas de GPU de la semana. ${generacion.libro.pistas.length ? `Ya tienes ${generacion.libro.pistas.length === 1 ? "1 capítulo" : generacion.libro.pistas.length + " capítulos"} para escuchar. ` : ""}Toca Continuar cuando tengas horas de nuevo.`
+        : "Kaggle llega a un máximo de horas por corrida. Toca Continuar y sigue desde donde quedó.")
       : "Toca Descargar para guardarlo en tu teléfono.";
     else if (g.estado === "ERROR") d = g.error || "Abre Kaggle para ver el detalle.";
   }
@@ -1320,7 +1355,9 @@ async function actualizarGenerando() {
     } else if (g.estado === "COMPLETE") {
       const salida = await KAGGLE.archivosDeSalida(g.kernel);
       g.pausado = !!(salida.registro && salida.registro.pausado);
+      g.cortado = !!(salida.registro && salida.registro.cortado);
       g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
+      if (g.pausado) await importarSalida(l, t => pintarGenerando(t));   // lo que alcanzó a hacer ya se puede escuchar
       if (g.etapa === "primero" && !g.pausado) await procesarPrimero(l, t => pintarGenerando(t));
       else if (g.etapa === "resto" && !g.pausado) { await BD.guardarLibro(l); return descargarGenerado(); }
     }
@@ -1341,7 +1378,8 @@ async function lanzarSiguienteParte(l) {
   const texto = await KAGGLE.prepararNotebook(g.config || { epub: "", voz: "", descripcion: "" }, false, "");
   const { slug } = await KAGGLE.lanzarNotebook(`${g.partes[0]}-p${n}`, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
     { datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`), kernels: [`${g.usuario}/${g.kernel}`] });
-  g.partes.push(slug); g.kernel = slug; g.estado = "QUEUED"; g.pausado = false; g.archivos = null;
+  g.partes.push(slug); g.kernel = slug; g.estado = "QUEUED"; g.pausado = false; g.cortado = false; g.archivos = null;
+  if (g.etapa === "primero") g.etapa = "resto";
   await BD.guardarLibro(l);
 }
 
@@ -1435,8 +1473,14 @@ async function bajarResto(l) {
     const g = l.generando;
     const salida = await KAGGLE.archivosDeSalida(g.kernel);
     g.pausado = !!(salida.registro && salida.registro.pausado);
+    g.cortado = !!(salida.registro && salida.registro.cortado);
     g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
-    if (g.pausado) { await BD.guardarLibro(l); return; }
+    if (g.pausado) {
+      await importarSalida(l, () => {});
+      await BD.guardarLibro(l);
+      avisar(`La segunda parte de “${l.titulo}” se detuvo antes de terminar. Ábrela para seguir.`, 6000);
+      return;
+    }
     await importarSalida(l, () => {});
     l.generado = { ...g, archivos: undefined };
     delete l.generando;
@@ -1446,7 +1490,13 @@ async function bajarResto(l) {
 }
 
 async function descargarGenerado() {
-  const l = generacion.libro, g = l.generando;
+  const l = generacion.libro, g = l && l.generando;
+  if (!g || descargando.has(l.id)) return;      // ya se está bajando (p. ej. sola, o doble toque)
+  descargando.add(l.id);
+  try { await descargarGeneradoSinRepetir(l, g); } finally { descargando.delete(l.id); }
+}
+const descargando = new Set();
+async function descargarGeneradoSinRepetir(l, g) {
   if (!(g.archivos || []).some(f => /\.mp3$/i.test(f.nombre)) && !l.pistas.length) { pintarGenerando("No encontré capítulos en la salida de Kaggle."); return; }
   $("btn-gen-descargar").disabled = true;
   try {
@@ -1602,7 +1652,12 @@ $("btn-gen-borrar").onclick = async () => {
 $("btn-agregar").onclick = () => $("entrada-archivos").click();
 $("btn-compartir").onclick = () => abrirCompartir();
 $("btn-gen-escuchar").onclick = () => generacion.libro && abrirLibro(generacion.libro.id);
-$("aviso-generando").onclick = () => estado.libro && abrirGenerando(estado.libro);
+$("aviso-generando").onclick = () => {
+  const l = estado.libro;
+  if (!l) return;
+  if (!l.generando && l.generado && l.generado.aMedias) return seguirLibroAMedias(l);
+  abrirGenerando(l);
+};
 setInterval(revisarPrimeros, 180000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) revisarPrimeros(); });
 $("btn-compartir-guardar").onclick = guardarCompartido;
