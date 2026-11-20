@@ -940,9 +940,9 @@ function textoEstadoCorto(g) {
     return "Creando una muestra de la voz…";
   }
   if (g.etapa === "primero" && g.estado !== "ERROR") return "Generando el primer capítulo…";
-  if (g.etapa === "cadena" && g.estado !== "ERROR" && !g.capitulosListos) return "Generando el primer capítulo…";
+  if (g.etapa === "cadena" && g.estado !== "ERROR" && !g.capitulosListos) return "Generando la primera parte…";
   if (g.etapa === "cadena" && g.estado !== "ERROR")
-    return `Capítulo por capítulo · ${g.capitulosTotales ? `${g.capitulosListos || 0} de ${g.capitulosTotales}` : `${g.capitulosListos || 0}`} listos`;
+    return `En partes · ${g.capitulosTotales ? `${g.capitulosListos || 0} de ${g.capitulosTotales}` : `${g.capitulosListos || 0}`} capítulos listos`;
   const base = ESTADOS[g.estado] || "Generando";
   if (g.estado === "RUNNING" && g.horasRestantes != null) return `${base} · quedan ~${String(g.horasRestantes).replace(".", ",")} h`;
   return base;
@@ -1226,7 +1226,7 @@ function pintarGenerando(detalle) {
   else if (!detalle && g.etapa === "primero" && (g.estado === "QUEUED" || g.estado === "RUNNING"))
     d = "Primero se genera el capítulo 1, para que empieces a escuchar antes. " + d;
   else if (!detalle && g.etapa === "cadena" && (g.estado === "QUEUED" || g.estado === "RUNNING"))
-    d = "Se genera capítulo por capítulo: cada uno aparece apenas está listo. " + d;
+    d = "Se genera en 10 partes: cada una aparece apenas está lista. " + d;
   $("gen-detalle").textContent = d;
   const pct = g.estado === "COMPLETE" && !g.pausado ? 100
     : (g.capitulosListos && g.capitulosTotales ? Math.round(g.capitulosListos / g.capitulosTotales * 100) : (g.estado === "RUNNING" ? 3 : 0));
@@ -1345,12 +1345,12 @@ async function importarSalida(l, avisarAvance) {
 
 // Modo de entrega → etapa de la generación, y qué capítulos pide cada corrida.
 const g0 = l => l.generando || {};
-const etapaDeModo = modo => (modo === "capitulo" ? "cadena" : modo === "primero" ? "primero" : "");
+const etapaDeModo = modo => (modo === "partes" ? "cadena" : modo === "primero" ? "primero" : "");
 const CAPS_ETAPA = { primero: "primero", cadena: "siguiente" };
 
 // Terminó una corrida por partes: sus capítulos nuevos se agregan a la biblioteca y se lanza la siguiente.
 //  · etapa "primero": tras el capítulo 1 se lanza el resto del libro de una vez.
-//  · etapa "cadena": una corrida por capítulo; el notebook deja _quedan-N.txt para saber cuándo parar.
+//  · etapa "cadena": una corrida por cada 10 % del libro; el notebook deja _quedan-N.txt para saber cuándo parar.
 const procesando = new Set();
 async function procesarParte(l, avisarAvance = () => {}) {
   if (procesando.has(l.id)) return;
@@ -1368,14 +1368,14 @@ async function procesarParte(l, avisarAvance = () => {}) {
       g.capitulosListos = l.pistas.length;
       if (marca) g.capitulosTotales = l.pistas.length + quedan;
       if (quedan > 0 && !n) {
-        g.estado = "ERROR"; g.error = "Kaggle terminó sin entregar el capítulo. Abre Kaggle para ver el detalle.";
+        g.estado = "ERROR"; g.error = "Kaggle terminó sin entregar la parte. Abre Kaggle para ver el detalle.";
         await BD.guardarLibro(l);
         return;
       }
       if (quedan > 0) {
-        avisarAvance("Pidiendo el capítulo siguiente…");
+        avisarAvance("Pidiendo la parte siguiente…");
         await lanzarSiguienteParte(l, "siguiente");
-        if (n) avisar(`Llegó un capítulo nuevo de “${l.titulo}” 🎧`, 5000);
+        if (n) avisar(`Llegó otra parte de “${l.titulo}” 🎧`, 5000);
         return;
       }
       if (!l.pistas.length) throw new Error("no llegó ningún capítulo");
@@ -1551,7 +1551,7 @@ $("entrada-voz").onchange = e => {
 };
 document.querySelectorAll('input[name="voz"]').forEach(r => r.onchange = pintarOpcionesVoz);
 const NOTAS_MODO = {
-  capitulo: "Para pasar al capítulo siguiente, la app tiene que estar abierta de vez en cuando. Usa unos minutos más de GPU por capítulo.",
+  partes: "Para pasar a la parte siguiente, la app tiene que estar abierta de vez en cuando. Usa unos minutos más de GPU por parte.",
   primero: "Después del primer capítulo, el resto sigue solo aunque cierres la app o apagues el teléfono.",
   "": "Sigue solo aunque apagues el teléfono. Escuchas cuando termina todo el libro.",
 };
