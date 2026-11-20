@@ -79,19 +79,24 @@ function tipoPorNombre(n) {
 
 // ---------- importar ----------
 // Lee el .zip por partes (sin cargarlo entero en memoria): un libro puede pesar cientos de MB.
+// Archivos extra que agrega «Compartir libro» (ver armarZipLibro)
+const RE_PORTADA_ZIP = /(^|\/)_portada\.(jpe?g|png|webp)$/i;
+const RE_EXTRA_ZIP = /^_(audiolibro|texto)\.json$|^_portada\.(jpe?g|png|webp)$/i;
+
 async function abrirZip(archivo) {
   const audios = [];
   const pendientes = [];
   const unzip = new fflate.Unzip(entrada => {
     const nombre = entrada.name;
-    if (!(EXT_AUDIO.test(nombre) || /\.json$/i.test(nombre)) || /(^|\/)(__MACOSX|_partes)\//.test(nombre)) return;
+    if (!(EXT_AUDIO.test(nombre) || /\.json$/i.test(nombre) || RE_PORTADA_ZIP.test(nombre)) || /(^|\/)(__MACOSX|_partes)\//.test(nombre)) return;
     const trozos = [];
     pendientes.push(new Promise((ok, mal) => {
       entrada.ondata = (err, datos, final) => {
         if (err) return mal(err);
         trozos.push(datos);
         if (final) {
-          audios.push({ nombre: nombre.replace(/^.*\//, ""), blob: new Blob(trozos, { type: tipoPorNombre(nombre) }) });
+          const tipo = RE_PORTADA_ZIP.test(nombre) ? "image/" + nombre.split(".").pop().toLowerCase().replace("jpg", "jpeg") : tipoPorNombre(nombre);
+          audios.push({ nombre: nombre.replace(/^.*\//, ""), blob: new Blob(trozos, { type: tipo }) });
           ok();
         }
       };
@@ -118,10 +123,17 @@ async function expandirArchivos(lista) {
       salida.push({ nombre: f.name, blob: f });
     }
   }
+  // extras de un libro compartido desde la app: título y nombres, texto libre y portada
+  const extras = {};
+  for (const a of salida.filter(a => RE_EXTRA_ZIP.test(a.nombre))) {
+    if (/^_portada/i.test(a.nombre)) extras.portada = a.blob;
+    else if (/^_texto/i.test(a.nombre)) extras.texto = a.blob;
+    else { try { extras.manifiesto = JSON.parse(await a.blob.text()); } catch {} }
+  }
   // .json = sincronización texto-audio que genera el notebook (mismo nombre que el MP3)
   const base = n => n.replace(/\.[^.]+$/, "");
   const sinc = new Map();
-  for (const a of salida.filter(a => /\.json$/i.test(a.nombre))) {
+  for (const a of salida.filter(a => /\.json$/i.test(a.nombre) && !RE_EXTRA_ZIP.test(a.nombre))) {
     try {
       const d = JSON.parse(await a.blob.text());
       if (Array.isArray(d.frases)) sinc.set(base(a.nombre), d.frases.filter(f => typeof f.t === "number" && f.texto));
@@ -132,7 +144,9 @@ async function expandirArchivos(lista) {
   const capitulos = audios.filter(a => !/\.m4b$/i.test(a.nombre));
   const elegidos = capitulos.length > 1 ? capitulos : audios;
   for (const a of elegidos) a.frases = sinc.get(base(a.nombre)) || null;
-  return elegidos.sort((a, b) => ordenNatural(a.nombre, b.nombre));
+  elegidos.sort((a, b) => ordenNatural(a.nombre, b.nombre));
+  elegidos.extras = extras;
+  return elegidos;
 }
 
 function tituloSugerido(archivosOriginales) {
@@ -161,7 +175,9 @@ async function importar(lista) {
   if (!pistas.length) { avisar("No encontré audios (MP3, M4B…) en lo que elegiste."); return; }
   $("aviso").hidden = true;
 
-  const titulo = await pedirTitulo(tituloSugerido(lista),
+  const extras = pistas.extras || {}, man = extras.manifiesto || {};
+  const nombres = Array.isArray(man.pistas) && man.pistas.length === pistas.length ? man.pistas : null;
+  const titulo = await pedirTitulo(man.titulo || tituloSugerido(lista),
     `${pistas.length} ${pistas.length === 1 ? "archivo" : "capítulos"} de audio`);
   if (!titulo) return;
 
@@ -171,9 +187,11 @@ async function importar(lista) {
       avisar(`Guardando ${i + 1} de ${pistas.length}…`, 60000);
       const idArchivo = uid();
       await BD.guardarArchivo(idArchivo, pistas[i].blob);
-      libro.pistas.push({ nombre: nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob),
+      libro.pistas.push({ nombre: (nombres && nombres[i]) || nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob),
                           frases: pistas[i].frases || null });
     }
+    if (extras.portada) { libro.portadaId = uid(); await BD.guardarArchivo(libro.portadaId, extras.portada); }
+    if (extras.texto) { libro.epubId = uid(); await BD.guardarArchivo(libro.epubId, new Blob([extras.texto], { type: "application/json" })); }
     await BD.guardarLibro(libro);
   } catch (e) {
     avisar("No se pudo guardar (¿falta espacio en el teléfono?): " + e.message, 8000);
@@ -187,6 +205,96 @@ async function importar(lista) {
 
 async function pedirAlmacenamientoPersistente() {
   try { if (navigator.storage?.persist) await navigator.storage.persist(); } catch {}
+}
+
+// ---------- compartir un libro ----------
+// Arma un .zip que esta misma app sabe importar: audios numerados, la sincronización de cada
+// capítulo (.json), y extras con el título, los nombres reales, el texto libre y la portada.
+const EXT_POR_TIPO = { "audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/aac": "aac",
+                       "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-wav": "wav", "audio/flac": "flac" };
+const nombreParaZip = s => s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s.,()-]/g, "")
+  .trim().replace(/\s+/g, "_").slice(0, 60) || "libro";
+
+async function armarZipLibro(l, avance) {
+  const trozos = [];
+  let falla = null;
+  const zip = new fflate.Zip((err, datos) => { if (err) falla = err; else trozos.push(datos); });
+  const agregar = async (nombre, blob) => {
+    const f = new fflate.ZipPassThrough(nombre);      // sin comprimir: los audios ya vienen comprimidos
+    zip.add(f);
+    const lector = blob.stream().getReader();
+    for (;;) {
+      const { value, done } = await lector.read();
+      if (done) { f.push(new Uint8Array(0), true); break; }
+      f.push(value);
+    }
+    if (falla) throw falla;
+  };
+  const texto = o => new Blob([JSON.stringify(o)], { type: "application/json" });
+  const ancho = Math.max(3, String(l.pistas.length).length);
+  await agregar("_audiolibro.json", texto({ version: 1, titulo: l.titulo, pistas: l.pistas.map(p => p.nombre) }));
+  for (let i = 0; i < l.pistas.length; i++) {
+    const p = l.pistas[i];
+    avance(i + 1, l.pistas.length);
+    const blob = await BD.archivo(p.idArchivo);
+    if (!blob) throw new Error(`Falta el audio del capítulo ${i + 1}`);
+    const nombre = `${String(i + 1).padStart(ancho, "0")} - ${nombreParaZip(p.nombre)}`;
+    await agregar(`${nombre}.${EXT_POR_TIPO[blob.type] || "mp3"}`, blob);
+    if (p.frases && p.frases.length) await agregar(`${nombre}.json`, texto({ version: 1, titulo: p.nombre, frases: p.frases }));
+  }
+  if (l.portadaId) {
+    const b = await BD.archivo(l.portadaId);
+    if (b) await agregar(`_portada.${(b.type.split("/")[1] || "jpeg").replace("jpeg", "jpg")}`, b);
+  }
+  if (l.epubId) { const b = await BD.archivo(l.epubId); if (b) await agregar("_texto.json", b); }
+  zip.end();
+  if (falla) throw falla;
+  return new File(trozos, nombreParaZip(l.titulo) + ".zip", { type: "application/zip" });
+}
+
+const compartir = { archivo: null, url: "" };
+async function abrirCompartir() {
+  const l = estado.libro;
+  if (!l) return;
+  const est = $("compartir-estado");
+  est.classList.remove("error");
+  $("btn-compartir-enviar").hidden = true;
+  $("btn-compartir-guardar").hidden = true;
+  if (compartir.url) URL.revokeObjectURL(compartir.url);
+  compartir.archivo = null; compartir.url = "";
+  $("dlg-compartir").showModal();
+  try {
+    const archivo = await armarZipLibro(l, (i, n) => { est.textContent = `Preparando capítulo ${i} de ${n}…`; });
+    if (estado.libro !== l || !$("dlg-compartir").open) return;
+    compartir.archivo = archivo;
+    est.textContent = `Listo: ${archivo.name} · ${(archivo.size / 1048576).toFixed(0)} MB`;
+    // compartir necesita un toque nuevo de la persona (armar el zip tarda), por eso es un botón aparte
+    $("btn-compartir-enviar").hidden = !(navigator.canShare && navigator.canShare({ files: [archivo] }));
+    $("btn-compartir-guardar").hidden = false;
+  } catch (e) {
+    est.textContent = "No se pudo armar el archivo: " + e.message;
+    est.classList.add("error");
+  }
+}
+async function enviarCompartido() {
+  const f = compartir.archivo;
+  if (!f) return;
+  try {
+    await navigator.share({ files: [f], title: estado.libro?.titulo || "Audiolibro" });
+  } catch (e) {
+    if (e.name === "AbortError") return;           // la persona cerró el menú
+    $("compartir-estado").textContent = "No se pudo compartir directo (" + e.message + "). Guarda el archivo y mándalo desde tus archivos.";
+    $("btn-compartir-guardar").hidden = false;
+  }
+}
+function guardarCompartido() {
+  const f = compartir.archivo;
+  if (!f) return;
+  if (!compartir.url) compartir.url = URL.createObjectURL(f);
+  const a = document.createElement("a");
+  a.href = compartir.url; a.download = f.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  $("compartir-estado").textContent = `Guardado en Descargas: ${f.name}. Mándalo por WhatsApp como documento.`;
 }
 
 // ---------- biblioteca ----------
@@ -1307,6 +1415,10 @@ $("btn-gen-borrar").onclick = async () => {
   }, { once: true });
 };
 $("btn-agregar").onclick = () => $("entrada-archivos").click();
+$("btn-compartir").onclick = abrirCompartir;
+$("btn-compartir-enviar").onclick = enviarCompartido;
+$("btn-compartir-guardar").onclick = guardarCompartido;
+$("dlg-compartir").addEventListener("close", () => { compartir.archivo = null; });
 $("entrada-archivos").onchange = e => { const f = [...e.target.files]; e.target.value = ""; importar(f); };
 $("btn-borrar").onclick = () => {
   const dlg = $("dlg-confirmar");

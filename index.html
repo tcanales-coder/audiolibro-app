@@ -88,6 +88,7 @@
 
     <h2 class="sub">Capítulos</h2>
     <ol id="lista-capitulos" class="capitulos"></ol>
+    <button id="btn-compartir" class="boton-secundario">Compartir este libro</button>
     <button id="btn-borrar" class="boton-peligro">Borrar este libro del teléfono</button>
   </main>
 
@@ -172,6 +173,21 @@
       </div>
       <p class="nota centrado" id="txt-muestra-ayuda">Primero Kaggle crea unos segundos del libro con esa voz (10 a 20 minutos). Si te gusta, sigues con el libro completo.</p>
       <button type="button" id="btn-gen-directo" class="enlace">Saltar la muestra y generar el libro completo</button>
+    </form>
+  </dialog>
+
+  <!-- Compartir un libro -->
+  <dialog id="dlg-compartir">
+    <form method="dialog">
+      <h2>Compartir libro</h2>
+      <p class="nota">Se arma un archivo .zip con los audios, el texto y la portada. Quien lo reciba lo abre en esta app con <b>Agregar audios que ya tengo</b>, sin necesitar Kaggle.</p>
+      <p id="compartir-estado" class="gen-mensaje" role="status"></p>
+      <div class="fila-botones">
+        <button value="cancelar" class="chip" formnovalidate>Cerrar</button>
+        <button type="button" id="btn-compartir-enviar" class="boton-principal" hidden>Compartir</button>
+      </div>
+      <button type="button" id="btn-compartir-guardar" class="enlace" hidden>Guardar el archivo en el teléfono</button>
+      <p class="nota">Comparte solo libros que se puedan compartir: de dominio público, o con quien también tiene el libro.</p>
     </form>
   </dialog>
 
