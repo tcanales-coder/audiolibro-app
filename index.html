@@ -183,11 +183,15 @@
       <h2>Compartir libro</h2>
       <p class="nota">Se arma un archivo .zip con los audios, el texto y la portada. Quien lo reciba lo abre en esta app con <b>Agregar audios que ya tengo</b>, sin necesitar Kaggle.</p>
       <p id="compartir-estado" class="gen-mensaje" role="status"></p>
+      <ol id="compartir-pasos" class="pasos-compartir" hidden>
+        <li>Abre WhatsApp y entra al chat.</li>
+        <li>Toca 📎 → <b>Documento</b>.</li>
+        <li>Elige <b id="compartir-nombre"></b> (aparece entre los recientes o en Descargas).</li>
+      </ol>
       <div class="fila-botones">
         <button value="cancelar" class="chip" formnovalidate>Cerrar</button>
-        <button type="button" id="btn-compartir-enviar" class="boton-principal" hidden>Compartir</button>
+        <button type="button" id="btn-compartir-guardar" class="boton-principal" hidden>Guardar en el teléfono</button>
       </div>
-      <button type="button" id="btn-compartir-guardar" class="enlace" hidden>Guardar el archivo en el teléfono</button>
       <p class="nota">Comparte solo libros que se puedan compartir: de dominio público, o con quien también tiene el libro.</p>
     </form>
   </dialog>

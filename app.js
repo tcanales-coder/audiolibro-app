@@ -253,39 +253,27 @@ async function armarZipLibro(l, avance) {
   return new File(trozos, nombreParaZip(l.titulo) + ".zip", { type: "application/zip" });
 }
 
-const compartir = { archivo: null, url: "" };
-async function abrirCompartir() {
-  const l = estado.libro;
+// Nota: Chrome en Android no deja pasar archivos .zip al menú Compartir (da "Permission denied"),
+// así que el libro se guarda en el teléfono y se manda desde WhatsApp como documento.
+const compartir = { archivo: null, url: "", libro: null };
+async function abrirCompartir(l = estado.libro) {
   if (!l) return;
   const est = $("compartir-estado");
   est.classList.remove("error");
-  $("btn-compartir-enviar").hidden = true;
   $("btn-compartir-guardar").hidden = true;
+  $("compartir-pasos").hidden = true;
   if (compartir.url) URL.revokeObjectURL(compartir.url);
-  compartir.archivo = null; compartir.url = "";
+  compartir.archivo = null; compartir.url = ""; compartir.libro = l;
   $("dlg-compartir").showModal();
   try {
     const archivo = await armarZipLibro(l, (i, n) => { est.textContent = `Preparando capítulo ${i} de ${n}…`; });
-    if (estado.libro !== l || !$("dlg-compartir").open) return;
+    if (compartir.libro !== l || !$("dlg-compartir").open) return;
     compartir.archivo = archivo;
     est.textContent = `Listo: ${archivo.name} · ${(archivo.size / 1048576).toFixed(0)} MB`;
-    // compartir necesita un toque nuevo de la persona (armar el zip tarda), por eso es un botón aparte
-    $("btn-compartir-enviar").hidden = !(navigator.canShare && navigator.canShare({ files: [archivo] }));
     $("btn-compartir-guardar").hidden = false;
   } catch (e) {
     est.textContent = "No se pudo armar el archivo: " + e.message;
     est.classList.add("error");
-  }
-}
-async function enviarCompartido() {
-  const f = compartir.archivo;
-  if (!f) return;
-  try {
-    await navigator.share({ files: [f], title: estado.libro?.titulo || "Audiolibro" });
-  } catch (e) {
-    if (e.name === "AbortError") return;           // la persona cerró el menú
-    $("compartir-estado").textContent = "No se pudo compartir directo (" + e.message + "). Guarda el archivo y mándalo desde tus archivos.";
-    $("btn-compartir-guardar").hidden = false;
   }
 }
 function guardarCompartido() {
@@ -295,7 +283,10 @@ function guardarCompartido() {
   const a = document.createElement("a");
   a.href = compartir.url; a.download = f.name;
   document.body.appendChild(a); a.click(); a.remove();
-  $("compartir-estado").textContent = `Guardado en Descargas: ${f.name}. Mándalo por WhatsApp como documento.`;
+  $("compartir-estado").textContent = "Guardado en Descargas. Ahora mándalo así:";
+  $("compartir-nombre").textContent = f.name;
+  $("compartir-pasos").hidden = false;
+  $("btn-compartir-guardar").textContent = "Guardar otra vez";
 }
 
 // ---------- biblioteca ----------
@@ -342,6 +333,15 @@ async function mostrarBiblioteca() {
     if (url) { const m = b.querySelector(".mini"); fondoPortada(m, l, url); m.textContent = ""; }
     b.onclick = () => abrirLibro(l.id);
     li.appendChild(b);
+    if (!l.generando && l.pistas.length) {          // compartir directo desde la biblioteca
+      li.classList.add("con-compartir");
+      const c = document.createElement("button");
+      c.className = "compartir-mini icono";
+      c.setAttribute("aria-label", `Compartir «${l.titulo}»`);
+      c.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/><path d="M8.3 10.8l7.4-4.4M8.3 13.2l7.4 4.4"/></svg>';
+      c.onclick = () => abrirCompartir(l);
+      li.appendChild(c);
+    }
     ul.appendChild(li);
   }
   mostrarEspacio();
@@ -1416,10 +1416,11 @@ $("btn-gen-borrar").onclick = async () => {
   }, { once: true });
 };
 $("btn-agregar").onclick = () => $("entrada-archivos").click();
-$("btn-compartir").onclick = abrirCompartir;
-$("btn-compartir-enviar").onclick = enviarCompartido;
+$("btn-compartir").onclick = () => abrirCompartir();
 $("btn-compartir-guardar").onclick = guardarCompartido;
-$("dlg-compartir").addEventListener("close", () => { compartir.archivo = null; });
+$("dlg-compartir").addEventListener("close", () => {
+  compartir.archivo = null; compartir.libro = null; $("btn-compartir-guardar").textContent = "Guardar en el teléfono";
+});
 $("entrada-archivos").onchange = e => { const f = [...e.target.files]; e.target.value = ""; importar(f); };
 $("btn-borrar").onclick = () => {
   const dlg = $("dlg-confirmar");
