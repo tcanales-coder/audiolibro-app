@@ -29,6 +29,11 @@
       <p class="vacio-titulo">Aún no tienes libros</p>
       <p>Agrega los MP3 de un libro, o el archivo .zip que descargas desde la pestaña <b>Output</b> de Kaggle.</p>
     </div>
+    <div id="cuota" class="cuota" hidden>
+      <div class="cuota-fila"><span>GPU de Kaggle esta semana</span><b id="cuota-horas"></b></div>
+      <div class="cuota-barra"><span id="cuota-usada"></span><span id="cuota-reservada"></span></div>
+      <p id="cuota-renueva" class="nota"></p>
+    </div>
     <ul id="lista-libros" class="libros"></ul>
     <button id="btn-generar" class="boton-principal">+ Crear audiolibro desde un EPUB</button>
     <button id="btn-agregar" class="boton-secundario">Agregar audios que ya tengo</button>
@@ -87,6 +92,7 @@
       </button>
     </div>
 
+    <button id="aviso-generando" class="aviso-generando" hidden></button>
     <h2 class="sub">Capítulos</h2>
     <ol id="lista-capitulos" class="capitulos"></ol>
     <button id="btn-compartir" class="boton-secundario">Compartir este libro</button>
@@ -106,6 +112,7 @@
       <button id="btn-muestra-ok" class="boton-principal">Me gusta: generar el libro completo</button>
       <button id="btn-muestra-otra" class="boton-secundario">Probar otra voz</button>
     </div>
+    <button id="btn-gen-escuchar" class="boton-principal" hidden>Escuchar lo que ya está</button>
     <button id="btn-gen-actualizar" class="boton-principal">Actualizar</button>
     <button id="btn-gen-descargar" class="boton-principal" hidden>Descargar el audiolibro</button>
     <button id="btn-gen-continuar" class="boton-principal" hidden>Continuar la generación</button>
@@ -166,6 +173,7 @@
         <textarea id="in-descripcion" rows="3">A soft-spoken Latin American woman in her early 30s, gentle and calm, warm voice, slow relaxed pace, intimate audiobook narration</textarea>
         <p class="nota">Mejor en inglés: edad, tono, ritmo y acento.</p>
       </div>
+      <label class="opcion-voz" id="fila-por-partes"><input type="checkbox" id="chk-por-partes" checked> Empezar a escuchar apenas esté el primer capítulo</label>
       <p class="nota">Usa solo libros que te pertenecen, y voces propias o con permiso.</p>
       <p id="gen-mensaje" class="gen-mensaje" role="status"></p>
       <div class="fila-botones">
