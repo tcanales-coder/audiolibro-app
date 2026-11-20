@@ -24,7 +24,10 @@
     .replace(/<meta name="theme-color"[^>]*>/i, '<meta name="theme-color" content="#1E1A19">')
     .replace(/<link rel="manifest"[^>]*>/i, '<link rel="manifest" href="choro/manifest.webmanifest">')
     .replace(/<link rel="icon"[^>]*>/i, '<link rel="icon" href="choro/icon-192.png">')
-    .replace(/<link rel="apple-touch-icon"[^>]*>/i, '<link rel="apple-touch-icon" href="choro/icon-192.png">');
+    .replace(/<link rel="apple-touch-icon"[^>]*>/i, '<link rel="apple-touch-icon" href="choro/icon-192.png">')
+    // Comentarios del club: solo existen en Choro y Tinta, la versión de la familia no los carga
+    .replace(/<\/head>/i, '<link rel="stylesheet" href="comentarios.css"></head>')
+    .replace(/<\/body>/i, '<script src="comentarios.js"><\/script></body>');
   document.open(); document.write(html); document.close();
 })();
 </script>
