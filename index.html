@@ -174,11 +174,16 @@
         <p class="nota">Mejor en inglés: edad, tono, ritmo y acento.</p>
       </div>
       <fieldset class="voces" id="modo-generar">
-        <legend>Cómo se entregan los capítulos</legend>
-        <label class="opcion-voz"><input type="radio" name="modo" value="partes" checked> En 10 partes: cada 10 % del libro llega apenas esté listo</label>
-        <label class="opcion-voz"><input type="radio" name="modo" value="primero"> El primero apenas esté, y el resto todo junto</label>
-        <label class="opcion-voz"><input type="radio" name="modo" value=""> Todo el libro de una vez</label>
-        <p class="nota" id="nota-modo">Para pasar a la parte siguiente, la app tiene que estar abierta de vez en cuando. Usa unos minutos más de GPU por parte.</p>
+        <legend>¿Cómo quieres generarlo?</legend>
+        <label class="opcion-voz"><input type="radio" name="modo" value="" checked> Todo de una vez</label>
+        <label class="opcion-voz"><input type="radio" name="modo" value="parte"> Una parte ahora y el resto después</label>
+        <div id="bloque-parte" class="bloque-parte" hidden>
+          <label for="in-pct">¿Qué parte del libro primero?</label>
+          <div class="fila-pct"><input id="in-pct" type="number" min="5" max="90" step="5" value="20" inputmode="numeric"><span>%</span></div>
+          <p class="nota" id="estimacion-parte"></p>
+          <p class="aviso-parte">La segunda parte solo empieza cuando entras a la app. Si no la abres, queda esperando.</p>
+        </div>
+        <p class="nota" id="estimacion-todo"></p>
       </fieldset>
       <p class="nota">Usa solo libros que te pertenecen, y voces propias o con permiso.</p>
       <p id="gen-mensaje" class="gen-mensaje" role="status"></p>

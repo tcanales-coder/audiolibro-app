@@ -310,3 +310,9 @@ html.tema-choro .barra h1, html.tema-choro .vacio-titulo, html.tema-choro dialog
 .cuota .nota { margin: 0 0 8px; font-size: .82rem; }
 .aviso-generando { width: 100%; margin: 6px 0 10px; padding: 10px 12px; border-radius: 12px; text-align: left;
   border: 1px dashed var(--acento); background: color-mix(in srgb, var(--acento) 8%, var(--superficie)); color: var(--texto); font-size: .92rem; }
+
+.bloque-parte { margin: 4px 0 6px 30px; }
+.fila-pct { display: flex; align-items: center; gap: 8px; }
+.fila-pct input { width: 90px !important; }
+.aviso-parte { border-left: 4px solid var(--acento); background: color-mix(in srgb, var(--acento) 9%, var(--superficie));
+  border-radius: 10px; padding: 10px 12px; margin: 8px 0 0; font-size: .92rem; }
