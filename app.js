@@ -940,6 +940,16 @@ function textoEstadoCorto(g) {
     return "Creando una muestra de la voz…";
   }
   if (g.etapa === "primero" && g.estado !== "ERROR") return `Generando la primera parte (${g.pct || 20} %)…`;
+  if (g.etapa === "resto") {
+    if (g.estado === "QUEUED") return "Segunda parte: esperando una GPU en Kaggle";
+    if (g.estado === "RUNNING") {
+      const listos = g.capitulosListos && g.capitulosTotales ? ` · ${g.capitulosListos} de ${g.capitulosTotales} capítulos` : "";
+      const quedan = g.horasRestantes != null ? ` · quedan ~${String(g.horasRestantes).replace(".", ",")} h` : "";
+      return `Segunda parte: generándose${listos}${quedan}`;
+    }
+    if (g.estado === "COMPLETE" && !g.pausado) return "Segunda parte lista: bajándola…";
+    if (g.estado === "ERROR") return "Segunda parte: Kaggle tuvo un error";
+  }
   const base = ESTADOS[g.estado] || "Generando";
   if (g.estado === "RUNNING" && g.horasRestantes != null) return `${base} · quedan ~${String(g.horasRestantes).replace(".", ",")} h`;
   return base;
@@ -1063,21 +1073,22 @@ async function leerVozElegida() {
 }
 
 // "Todo de una vez" o "una parte ahora y el resto después", con cuánto tardaría cada corrida.
+const PASOS_PCT = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 100];   // el último paso es "Todo"
 function modoElegido() {
-  const modo = document.querySelector('input[name="modo"]:checked')?.value || "";
-  const pct = Math.min(90, Math.max(5, Math.round(+$("in-pct").value || 20)));
-  return { modo, pct };
+  const pct = PASOS_PCT[Math.round(+$("in-pct").value)] ?? 100;
+  return pct >= 100 ? { modo: "", pct: 100 } : { modo: "parte", pct };
 }
 function pintarModo() {
   const { modo, pct } = modoElegido();
-  $("bloque-parte").hidden = modo !== "parte";
+  $("pct-valor").textContent = modo ? `${pct} %` : "Todo";
+  $("pct-sub").textContent = modo ? "ahora, y el resto después" : "de una vez";
+  $("aviso-parte").hidden = !modo;
   const h = generacion.horasLibro;
   const txt = x => { const m = Math.round(x * 60 / 15) * 15; return m < 60 ? `${Math.max(15, m)} min` : `${String(Math.round(x * 2) / 2).replace(".", ",")} h`; };
   const preparar = 0.25;   // instalar y cargar la voz, en cada corrida
-  $("estimacion-todo").textContent = h && modo !== "parte" ? `Tardaría unas ${txt(h + preparar)}.` : "";
-  $("estimacion-parte").textContent = h
-    ? `Primera parte (${pct} %): unas ${txt(h * pct / 100 + preparar)}. El resto: unas ${txt(h * (100 - pct) / 100 + preparar)}. Es aproximado: los capítulos no se cortan por la mitad.`
-    : "";
+  $("estimacion-parte").innerHTML = !h ? ""
+    : modo ? `Primera parte: unas <b>${txt(h * pct / 100 + preparar)}</b>. El resto: unas <b>${txt(h * (100 - pct) / 100 + preparar)}</b>. Es aproximado: los capítulos no se cortan por la mitad.`
+    : `Tardaría unas <b>${txt(h + preparar)}</b>. Sigue solo aunque cierres la app.`;
 }
 
 // conMuestra=true: primero una muestra corta de la voz; el libro completo se lanza al confirmarla.
@@ -1094,7 +1105,7 @@ async function iniciarGeneracion(conMuestra = true) {
 
   botones(false);
   const id = idCorto();
-  const slugKernel = conMuestra ? `audiolibro-${id}-voz1` : `audiolibro-${id}`;
+  let slugKernel = conMuestra ? `audiolibro-${id}-voz1` : `audiolibro-${id}`;
   let slugDataset = `audiolibro-${id}-entrada`;
   let usuario = KAGGLE.ajustes().usuario;
   const nombreEpub = nombreSeguro(generacion.epub.name);
@@ -1109,8 +1120,8 @@ async function iniciarGeneracion(conMuestra = true) {
     ({ usuario, slug: slugDataset } = await KAGGLE.crearDataset(slugDataset, `Audiolibro ${id} entrada`, archivos, msg));
     msg(conMuestra ? "Pidiendo la muestra de voz a Kaggle…" : "Lanzando el notebook con GPU…");
     const texto = await KAGGLE.prepararNotebook(config, conMuestra, primero ? `hasta:${pct}` : "");
-    await KAGGLE.lanzarNotebook(slugKernel, conMuestra ? `Audiolibro ${id} voz 1` : `Audiolibro ${id}`, texto,
-      { datasets: [`${usuario}/${slugDataset}`] });
+    ({ slug: slugKernel } = await KAGGLE.lanzarNotebook(slugKernel, conMuestra ? `Audiolibro ${id} voz1` : `Audiolibro ${id}`, texto,
+      { datasets: [`${usuario}/${slugDataset}`] }));
   } catch (e) {
     return fallo("No se pudo: " + e.message);
   }
@@ -1137,7 +1148,7 @@ async function nuevaMuestra(l, msg, fallo, botones) {
   try { ({ voz, descripcion } = await leerVozElegida()); } catch (e) { return fallo(e.message); }
   botones(false);
   const n = (g.nMuestra || 1) + 1;
-  const slugKernel = `audiolibro-${g.idKaggle}-voz${n}`;
+  let slugKernel = `audiolibro-${g.idKaggle}-voz${n}`;
   const config = { ...g.config, voz: "", descripcion };
   const datasets = [...(g.datasets || [g.dataset])];
   try {
@@ -1149,8 +1160,8 @@ async function nuevaMuestra(l, msg, fallo, botones) {
     }
     msg("Pidiendo la nueva muestra a Kaggle…");
     const texto = await KAGGLE.prepararNotebook(config, true);
-    await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${g.idKaggle} voz ${n}`, texto,
-      { datasets: datasets.map(d => `${g.usuario}/${d}`) });
+    ({ slug: slugKernel } = await KAGGLE.lanzarNotebook(slugKernel, `Audiolibro ${g.idKaggle} voz${n}`, texto,
+      { datasets: datasets.map(d => `${g.usuario}/${d}`) }));
   } catch (e) {
     return fallo("No se pudo: " + e.message);
   }
@@ -1166,15 +1177,15 @@ async function nuevaMuestra(l, msg, fallo, botones) {
 // (la salida de la muestra entra al notebook, que reutiliza su voz_referencia.wav).
 async function confirmarMuestra() {
   const l = generacion.libro, g = l.generando;
-  const slug = `audiolibro-${g.idKaggle}`;
+  let slug = `audiolibro-${g.idKaggle}`;
   $("btn-muestra-ok").disabled = true;
   pintarGenerando("Lanzando el libro completo…");
   try {
     const texto = await KAGGLE.prepararNotebook(g.config, false, g.modo === "parte" ? `hasta:${g.pct}` : "");
-    await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.idKaggle}`, texto, {
+    ({ slug } = await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.idKaggle}`, texto, {
       datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`),
       kernels: [`${g.usuario}/${g.kernel}`],
-    });
+    }));
   } catch (e) {
     $("btn-muestra-ok").disabled = false;
     return pintarGenerando("No se pudo lanzar el libro: " + e.message);
@@ -1239,6 +1250,8 @@ function pintarGenerando(detalle) {
   }
   if (!detalle && !muestra && generacion.libro.pistas.length && g.estado !== "COMPLETE")
     d = `Ya puedes escuchar ${generacion.libro.pistas.length === 1 ? "el primer capítulo" : generacion.libro.pistas.length + " capítulos"} mientras tanto. ` + d;
+  if (!detalle && g.etapa === "resto" && g.estado !== "COMPLETE")
+    d = "Segunda parte (el resto del libro). " + d;
   else if (!detalle && g.etapa === "primero" && (g.estado === "QUEUED" || g.estado === "RUNNING"))
     d = `Primero se genera el ${g.pct || 20} % del libro, para que empieces a escuchar antes. El resto empieza cuando entres a la app después de eso. ` + d;
   $("gen-detalle").textContent = d;
@@ -1265,12 +1278,25 @@ async function pintarAudioMuestra() {
   if (blob) { a.src = URL.createObjectURL(blob); a.dataset.libro = generacion.libro.id; }
 }
 
+// Muestras lanzadas antes del arreglo: Kaggle las guardó como "…-voz-1" y la app las buscaba como "…-voz1".
+async function estadoKernel(g) {
+  try { return await KAGGLE.estado(g.kernel); }
+  catch (e) {
+    const alt = g.kernel.replace(/-voz(\d+)$/, "-voz-$1");
+    if (alt === g.kernel || !/403|404/.test(e.message)) throw e;
+    const st = await KAGGLE.estado(alt);
+    g.kernel = alt;
+    $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${alt}`;
+    return st;
+  }
+}
+
 async function actualizarGenerando() {
   const l = generacion.libro, g = l.generando;
   if (g.fase === "muestra" && g.muestraLista) { pintarGenerando(); return pintarAudioMuestra(); }
   $("btn-gen-actualizar").disabled = true;
   try {
-    const st = await KAGGLE.estado(g.kernel);
+    const st = await estadoKernel(g);
     g.estado = st.estado; g.error = st.error;
     if (g.estado === "RUNNING") {
       const av = await KAGGLE.avance(g.kernel);
@@ -1296,6 +1322,7 @@ async function actualizarGenerando() {
       g.pausado = !!(salida.registro && salida.registro.pausado);
       g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
       if (g.etapa === "primero" && !g.pausado) await procesarPrimero(l, t => pintarGenerando(t));
+      else if (g.etapa === "resto" && !g.pausado) { await BD.guardarLibro(l); return descargarGenerado(); }
     }
     await BD.guardarLibro(l);
     pintarGenerando();
@@ -1310,9 +1337,9 @@ async function actualizarGenerando() {
 // Lanza la siguiente corrida del mismo libro: los capítulos ya hechos llegan como entrada y se saltan.
 async function lanzarSiguienteParte(l) {
   const g = l.generando;
-  const n = g.partes.length + 1, slug = `${g.partes[0]}-p${n}`;
+  const n = g.partes.length + 1;
   const texto = await KAGGLE.prepararNotebook(g.config || { epub: "", voz: "", descripcion: "" }, false, "");
-  await KAGGLE.lanzarNotebook(slug, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
+  const { slug } = await KAGGLE.lanzarNotebook(`${g.partes[0]}-p${n}`, `Audiolibro ${g.partes[0].slice(11)} p${n}`, texto,
     { datasets: (g.datasets || [g.dataset]).map(d => `${g.usuario}/${d}`), kernels: [`${g.usuario}/${g.kernel}`] });
   g.partes.push(slug); g.kernel = slug; g.estado = "QUEUED"; g.pausado = false; g.archivos = null;
   await BD.guardarLibro(l);
@@ -1381,17 +1408,41 @@ async function revisarPrimeros() {
   try { libros = await BD.libros(); } catch { return; }
   for (const l0 of libros) {
     const l = enUso(l0), g = l.generando;
-    if (!g || g.fase === "muestra" || g.etapa !== "primero" || procesando.has(l.id)) continue;
+    if (!g || g.fase === "muestra" || !(g.etapa === "primero" || g.etapa === "resto") || procesando.has(l.id)) continue;
     try {
       const st = await KAGGLE.estado(g.kernel);
       if (st.estado !== g.estado) { g.estado = st.estado; g.error = st.error; await BD.guardarLibro(l); }
-      if (st.estado === "COMPLETE") {
-        await procesarPrimero(l);
-        if (!$("vista-biblioteca").hidden) mostrarBiblioteca();
-        else if (estado.libro === l && !$("vista-reproductor").hidden) abrirLibro(l.id);
+      if (st.estado === "RUNNING" && g.etapa === "resto") {
+        const av = await KAGGLE.avance(g.kernel).catch(() => null);
+        if (av) Object.assign(g, { horasRestantes: av.horasRestantes ?? g.horasRestantes,
+          capitulosListos: av.capitulosListos || g.capitulosListos || 0, capitulosTotales: av.capitulosTotales || g.capitulosTotales });
+        await BD.guardarLibro(l);
       }
+      if (st.estado === "COMPLETE" && g.etapa === "resto") await bajarResto(l);
+      else if (st.estado === "COMPLETE") await procesarPrimero(l);
+      if (!$("vista-biblioteca").hidden) mostrarBiblioteca();
+      else if (estado.libro === l && !$("vista-reproductor").hidden) { if (l.generando) pintarAvisoGenerando(); else abrirLibro(l.id); }
+      else if (generacion.libro === l && !$("vista-generando").hidden) { if (l.generando) pintarGenerando(); else abrirLibro(l.id); }
     } catch {}
   }
+}
+
+// Terminó la segunda parte con la app abierta: se baja sola y el libro queda completo.
+async function bajarResto(l) {
+  if (procesando.has(l.id)) return;
+  procesando.add(l.id);
+  try {
+    const g = l.generando;
+    const salida = await KAGGLE.archivosDeSalida(g.kernel);
+    g.pausado = !!(salida.registro && salida.registro.pausado);
+    g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
+    if (g.pausado) { await BD.guardarLibro(l); return; }
+    await importarSalida(l, () => {});
+    l.generado = { ...g, archivos: undefined };
+    delete l.generando;
+    await BD.guardarLibro(l);
+    avisar(`Llegó la segunda parte: “${l.titulo}” está completo 🎧`, 6000);
+  } finally { procesando.delete(l.id); }
 }
 
 async function descargarGenerado() {
@@ -1529,8 +1580,8 @@ $("entrada-voz").onchange = e => {
   $("gen-voz-info").textContent = `${f.name} · ${Math.round(f.size / 1024)} KB`;
 };
 document.querySelectorAll('input[name="voz"]').forEach(r => r.onchange = pintarOpcionesVoz);
-document.querySelectorAll('input[name="modo"]').forEach(r => r.onchange = pintarModo);
 $("in-pct").oninput = pintarModo;
+pintarModo();
 $("btn-gen-iniciar").onclick = () => iniciarGeneracion(true);
 $("btn-gen-directo").onclick = () => iniciarGeneracion(false);
 $("btn-muestra-ok").onclick = confirmarMuestra;
