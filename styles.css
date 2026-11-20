@@ -293,3 +293,9 @@ html.tema-choro .barra h1, html.tema-choro .vacio-titulo, html.tema-choro dialog
 }
 .logo-tema { display: block; margin: 4px auto 12px; width: min(62vw, 240px); }
 .logo-tema img { display: block; width: 100%; height: auto; }
+
+.libros li.con-compartir { position: relative; }
+.libros li.con-compartir .tarjeta { padding-right: 56px; }
+.compartir-mini { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); color: var(--acento); }
+.compartir-mini svg { width: 22px; height: 22px; }
+.pasos-compartir { margin: 4px 0 8px; padding-left: 22px; line-height: 1.6; }
