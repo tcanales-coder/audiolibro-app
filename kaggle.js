@@ -217,15 +217,18 @@ const KAGGLE = (() => {
 
   function interpretarRegistro(texto) {
     if (!texto) return null;
-    const t = texto.replace(/\\n/g, "\n").replace(/\\u00b7/g, "·");
+    const t = texto.replace(/\\n/g, "\n").replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
     const quedan = [...t.matchAll(/quedan ~([\d.]+) h/g)].pop();
     const listos = new Set([...t.matchAll(/✔ (\d{3}) -/g)].map(m => m[1])).size;
     const total = (t.match(/· (\d+) capítulos ·/) || [])[1];
+    const cortado = /«.*» · \d+ capítulos/.test(t) && !/¡Listo!|Pausado: vuelve a ejecutar|MODO PRUEBA/.test(t);
     return {
       horasRestantes: quedan ? parseFloat(quedan[1]) : null,
       capitulosListos: listos,
       capitulosTotales: total ? parseInt(total) : null,
-      pausado: /Pausado: vuelve a ejecutar/.test(t),
+      pausado: /Pausado: vuelve a ejecutar/.test(t) || cortado,
+      // Kaggle cortó la corrida antes del final (casi siempre: se acabaron las horas de GPU de la semana)
+      cortado,
       terminado: /¡Listo!/.test(t),
       estimacionHoras: (m => m ? parseFloat(m[1]) : null)(t.match(/libro completo en esta GPU: ~([\d.]+) horas/)),
     };
