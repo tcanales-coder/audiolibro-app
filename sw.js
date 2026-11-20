@@ -1,9 +1,9 @@
 // Guarda la app en el teléfono para que abra sin internet.
-const VERSION = "audiolibro-v13";
+const VERSION = "audiolibro-v14";
 const ARCHIVOS = [
   "./", "index.html", "styles.css", "app.js", "db.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "kaggle.js",
-  "vendor/fflate-0.8.2.js", "guia.html",
+  "vendor/fflate-0.8.2.js", "guia.html", "choro/", "choro/index.html", "choro/manifest.webmanifest", "choro/logo.png", "choro/logo-claro.png", "choro/icon-192.png", "choro/icon-512.png",
 ];
 
 self.addEventListener("install", e => {

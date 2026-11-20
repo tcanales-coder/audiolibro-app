@@ -276,3 +276,20 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 
 .gen-muestra { display: grid; gap: 10px; margin: 8px 0 14px; }
 .gen-muestra audio { width: 100%; }
+
+/* ----- piel "Choro y Tinta" (choro/index.html): paleta Vino tinto ----- */
+html.tema-choro {
+  --fondo: #efe4d8; --superficie: #fbf6f0; --texto: #1e1a19; --suave: #6f625c; --linea: #e2d5c8;
+  --acento: #7d2335; --acento-texto: #ffffff; --peligro: #a3332b; --barra: #1e1a19; --barra-texto: #f7eee6;
+}
+@media (prefers-color-scheme: dark) {
+  html.tema-choro {
+    --fondo: #1a1516; --superficie: #251d1f; --texto: #f2e9e2; --suave: #b5a69e; --linea: #3a2e30;
+    --acento: #e5a3ae; --acento-texto: #1a1516; --peligro: #f08a80; --barra: #120e0f; --barra-texto: #f2e9e2;
+  }
+}
+html.tema-choro .barra h1, html.tema-choro .vacio-titulo, html.tema-choro dialog h2 {
+  font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: .01em;
+}
+.logo-tema { display: block; margin: 4px auto 12px; width: min(62vw, 240px); }
+.logo-tema img { display: block; width: 100%; height: auto; }
