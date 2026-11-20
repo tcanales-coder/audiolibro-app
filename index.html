@@ -173,17 +173,13 @@
         <textarea id="in-descripcion" rows="3">A soft-spoken Latin American woman in her early 30s, gentle and calm, warm voice, slow relaxed pace, intimate audiobook narration</textarea>
         <p class="nota">Mejor en inglés: edad, tono, ritmo y acento.</p>
       </div>
-      <fieldset class="voces" id="modo-generar">
-        <legend>¿Cómo quieres generarlo?</legend>
-        <label class="opcion-voz"><input type="radio" name="modo" value="" checked> Todo de una vez</label>
-        <label class="opcion-voz"><input type="radio" name="modo" value="parte"> Una parte ahora y el resto después</label>
-        <div id="bloque-parte" class="bloque-parte" hidden>
-          <label for="in-pct">¿Qué parte del libro primero?</label>
-          <div class="fila-pct"><input id="in-pct" type="number" min="5" max="90" step="5" value="20" inputmode="numeric"><span>%</span></div>
-          <p class="nota" id="estimacion-parte"></p>
-          <p class="aviso-parte">La segunda parte solo empieza cuando entras a la app. Si no la abres, queda esperando.</p>
-        </div>
-        <p class="nota" id="estimacion-todo"></p>
+      <fieldset class="voces modo-generar" id="modo-generar">
+        <legend>¿Cuánto del libro generas primero?</legend>
+        <div class="pct-cabeza"><b id="pct-valor">Todo</b><span id="pct-sub" class="nota">de una vez</span></div>
+        <input id="in-pct" class="pct-rango" type="range" min="0" max="10" step="1" value="10" aria-label="Parte del libro que se genera primero">
+        <div class="pct-marcas" aria-hidden="true"><span>5 %</span><span>25 %</span><span>50 %</span><b>Todo</b></div>
+        <p class="nota" id="estimacion-parte"></p>
+        <p class="aviso-parte" id="aviso-parte" hidden>La segunda parte solo empieza cuando entras a la app. Si no la abres, queda esperando.</p>
       </fieldset>
       <p class="nota">Usa solo libros que te pertenecen, y voces propias o con permiso.</p>
       <p id="gen-mensaje" class="gen-mensaje" role="status"></p>
