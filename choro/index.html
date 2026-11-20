@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es" class="tema-choro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Choro y Tinta</title>
+  <meta name="theme-color" content="#1E1A19">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <style>html,body{margin:0;background:#EFE4D8}@media(prefers-color-scheme:dark){html,body{background:#1A1516}}</style>
+</head>
+<body>
+<script>
+// "Choro y Tinta" es la misma app con otra piel: se carga la página principal (../index.html)
+// y solo se cambian el nombre, el logo, los colores y el ícono. Todo el código es compartido.
+(async () => {
+  let html;
+  try { html = await (await fetch("../index.html", { cache: "no-cache" })).text(); }
+  catch { document.body.textContent = "Sin conexión. Abre la app una vez con internet."; return; }
+  html = html
+    .replace(/<html([^>]*)>/i, '<html$1 class="tema-choro">')
+    .replace(/<head>/i, '<head><base href="../"><script>window.TEMA_APP = { id: "choro", nombre: "Choro y Tinta", logo: "choro/logo.png", logoOscuro: "choro/logo-claro.png" };<\/script>')
+    .replace(/<title>[^<]*<\/title>/i, "<title>Choro y Tinta</title>")
+    .replace(/<meta name="theme-color"[^>]*>/i, '<meta name="theme-color" content="#1E1A19">')
+    .replace(/<link rel="manifest"[^>]*>/i, '<link rel="manifest" href="choro/manifest.webmanifest">')
+    .replace(/<link rel="icon"[^>]*>/i, '<link rel="icon" href="choro/icon-192.png">')
+    .replace(/<link rel="apple-touch-icon"[^>]*>/i, '<link rel="apple-touch-icon" href="choro/icon-192.png">');
+  document.open(); document.write(html); document.close();
+})();
+</script>
+</body>
+</html>

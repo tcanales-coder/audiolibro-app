@@ -1,6 +1,7 @@
 // Audiolibro: biblioteca y reproductor (etapa 1).
 const $ = id => document.getElementById(id);
 const audio = $("audio");
+const TEMA = window.TEMA_APP || null;
 const EXT_AUDIO = /\.(mp3|m4a|m4b|aac|ogg|oga|opus|wav|flac)$/i;
 const VELOCIDADES = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const DORMIR = [0, 15, 30, 45, 60, -1]; // minutos; -1 = al terminar el capítulo
@@ -313,7 +314,7 @@ async function mostrarBiblioteca() {
   $("btn-volver").hidden = true;
   $("btn-texto").hidden = true;
   cerrarTexto();
-  $("titulo-barra").textContent = "Mis audiolibros";
+  $("titulo-barra").textContent = TEMA ? TEMA.nombre : "Mis audiolibros";
 
   for (const u of urlsPortada.values()) URL.revokeObjectURL(u);
   urlsPortada.clear();
@@ -1434,6 +1435,12 @@ $("btn-borrar").onclick = () => {
 };
 
 // ---------- inicio ----------
+if (TEMA) {                               // otra piel de la misma app (ej. choro/index.html)
+  $("logo-tema").hidden = false;
+  $("logo-tema").querySelector("img").src = TEMA.logo;
+  $("logo-tema").querySelector("img").alt = TEMA.nombre;
+  if (TEMA.logoOscuro) $("logo-tema-oscuro").srcset = TEMA.logoOscuro;
+}
 pintarVelocidad();
 pintarDormir();
 (async function iniciar() {
