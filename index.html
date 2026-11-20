@@ -18,7 +18,8 @@
     </button>
     <h1 id="titulo-barra">Mis audiolibros</h1>
     <button id="btn-texto" class="icono derecha" aria-label="Seguir el texto" hidden>
-      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h13"/></svg>
+      <svg id="ico-abrir-texto" viewBox="0 0 24 24"><path d="M4 6h16M4 10h16M4 14h10M4 18h13"/></svg>
+      <svg id="ico-cerrar-texto" viewBox="0 0 24 24" hidden><path d="M3 6h11M3 10h11M3 14h8M3 18h8"/><path d="M15.5 13.5l5 5M20.5 13.5l-5 5"/></svg>
     </button>
   </header>
 
@@ -242,6 +243,7 @@
       <p id="texto-capitulo" class="texto-capitulo"></p>
     </div>
     <article id="texto-contenido" class="texto-contenido"></article>
+    <div id="lista-destacados" class="texto-contenido lista-destacados" hidden></div>
     <input id="entrada-epub" type="file" accept=".epub,application/epub+zip" hidden>
     <div id="zona-brillo" class="zona-brillo" aria-hidden="true"></div>
     <!-- Controles de lectura: aparecen con un toque en el texto -->
@@ -257,6 +259,12 @@
         <span id="txt-tamano">100%</span>
         <button id="btn-letra-mas" class="chip" aria-label="Letra más grande">A+</button>
       </div>
+      <div id="aviso-destacar" class="aviso-destacar" hidden>Un toque: la frase entera. Dos toques rápidos donde empieza y uno donde termina: un trozo. Toca lo destacado para quitarlo.</div>
+      <div id="fila-colores" class="fila-colores" hidden>
+        <button class="color-dest" data-color="0" aria-label="Amarillo"></button>
+        <button class="color-dest" data-color="1" aria-label="Verde"></button>
+        <button class="color-dest" data-color="2" aria-label="Rosado"></button>
+      </div>
       <div class="fila-herramientas">
         <button id="btn-tamano" class="icono texto" aria-label="Tamaño del texto">Aa</button>
         <button id="btn-noche" class="icono" aria-label="Modo noche"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
@@ -264,7 +272,8 @@
           <svg id="ico-play-t" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
           <svg id="ico-pausa-t" viewBox="0 0 24 24" hidden><path d="M8 5v14M16 5v14"/></svg>
         </button>
-        <button id="btn-cerrar-texto" class="icono" aria-label="Cerrar texto"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <button id="btn-destacador" class="icono" aria-label="Destacar frases" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5L10 19H5v-5z"/><path d="M12.5 6.5l5 5"/><path d="M4 21h8"/></svg></button>
+        <button id="btn-estrella" class="icono" aria-label="Ver solo las frases destacadas" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg></button>
       </div>
     </div>
   </section>

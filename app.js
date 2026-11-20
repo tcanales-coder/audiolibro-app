@@ -704,6 +704,8 @@ const tieneTexto = l => !!l && l.pistas.some(p => p.frases && p.frases.length);
 function abrirTexto() {
   guardarPref("textoAbierto", true);
   $("panel-texto").hidden = false;
+  iconoTexto(true);
+  salirModos();
   document.body.classList.add("sin-scroll");
   $("hueco-progreso").appendChild(document.querySelector(".progreso"));   // la misma barra del reproductor
   mostrarControles(false);
@@ -764,6 +766,7 @@ async function agregarEpub(archivo) {
   await BD.guardarArchivo(l.epubId, new Blob([JSON.stringify(datos)], { type: "application/json" }));
   await BD.guardarLibro(l);
   if (anterior) await BD.borrarArchivo(anterior);
+  const d = destacados(); Object.keys(d).forEach(k => { if ((k.startsWith("r:") ? d[k].a.k : k).startsWith("e:")) delete d[k]; }); guardarDestacados(d);
   pintarEpubLibre();
 }
 
@@ -784,17 +787,19 @@ async function pintarEpubLibre() {
   const datos = blob ? JSON.parse(await blob.text()) : { capitulos: [] };
   $("texto-capitulo").textContent = "Lectura libre (sin sincronía)";
   const frag = document.createDocumentFragment();
-  for (const cap of datos.capitulos) {
+  datos.capitulos.forEach((cap, ci) => {
     const sec = document.createElement("section");
     sec.className = "cap-epub";
-    for (const b of cap) {
+    cap.forEach((b, bi) => {
       const el = document.createElement(b.h ? "h3" : "p");
       el.textContent = b.t;
+      if (!b.h) { el.className = "frase"; el.dataset.clave = `e:${ci}:${bi}`; }
       sec.appendChild(el);
-    }
+    });
     frag.appendChild(sec);
-  }
+  });
   cont.appendChild(frag);
+  pintarDestacados();
   const cambiar = document.createElement("button");
   cambiar.className = "chip cambiar-epub";
   cambiar.textContent = "Usar otro EPUB";
@@ -803,7 +808,9 @@ async function pintarEpubLibre() {
   $("panel-texto").scrollTop = l.lecturaScroll || 0;
 }
 function cerrarTexto() {
+  salirModos();
   $("panel-texto").hidden = true;
+  iconoTexto(false);
   document.body.classList.remove("sin-scroll");
   $("oscurecer").style.opacity = 0;
   const prog = document.querySelector(".progreso");
@@ -815,6 +822,7 @@ function cerrarTexto() {
 
 // ----- controles de lectura (aparecen con un toque) -----
 function mostrarControles(ver) {
+  if (!ver && (modoLectura.destacar || modoLectura.estrella)) return;   // con destacador o estrella, el panel queda a la vista
   $("texto-controles").hidden = !ver;
   if (!ver) $("fila-tamano").hidden = true;
   if (ver) { actualizarTiempo(); pintarNombreCapLectura(); }
@@ -856,6 +864,7 @@ const TAMANOS = [0.8, 0.9, 1, 1.12, 1.25, 1.4, 1.6];
 function aplicarPreferenciasLectura() {
   const tam = leerPref("tamanoLetra", 1);
   $("texto-contenido").style.setProperty("--tam", tam);
+  $("lista-destacados").style.setProperty("--tam", tam);
   $("txt-tamano").textContent = Math.round(tam * 100) + "%";
   const noche = leerPref("lecturaNoche", false);
   $("panel-texto").classList.toggle("noche", noche);
@@ -914,6 +923,8 @@ function iniciarGestosLectura() {
   // un toque en el texto muestra u oculta los controles
   panel.addEventListener("click", e => {
     if (e.target.closest("button, input, .texto-controles, .zona-brillo")) return;
+    if (modoLectura.destacar) { toqueDestacar(e); return; }
+    if (modoLectura.estrella) return;
     mostrarControles($("texto-controles").hidden);
   });
 }
@@ -932,18 +943,21 @@ function pintarTexto() {
     const s = document.createElement("span");
     s.className = "frase";
     s.textContent = f.texto + " ";
-    s.ondblclick = e => { e.preventDefault(); audio.currentTime = f.t; if (audio.paused) audio.play().catch(() => {}); lectura.manualHasta = 0; };
+    s.dataset.clave = `p:${estado.pista}:${i}`;
+    s.ondblclick = e => { e.preventDefault(); if (modoLectura.destacar) return; audio.currentTime = f.t; if (audio.paused) audio.play().catch(() => {}); lectura.manualHasta = 0; };
     parrafo.appendChild(s);
     lectura.spans.push(s);
     // un fragmento que termina en punto final y el siguiente parte con mayúscula: posible fin de párrafo
     if (i % 4 === 3 && /[.!?…»”]$/.test(f.texto)) { cont.appendChild(parrafo); parrafo = document.createElement("p"); }
   });
   cont.appendChild(parrafo);
+  pintarDestacados();
   $("panel-texto").scrollTop = 0;
   seguirTexto(true);
 }
 function seguirTexto(forzar = false) {
   if ($("panel-texto").hidden || !estado.libro || lectura.libre) return;
+  if (modoLectura.estrella) { lectura.pista = -1; return; }      // se repinta al volver al texto
   if (lectura.pista !== estado.pista) { pintarNombreCapLectura(); return pintarTexto(); }
   const frases = estado.libro.pistas[estado.pista].frases;
   if (!frases || !frases.length) return;
@@ -956,6 +970,273 @@ function seguirTexto(forzar = false) {
   const s = lectura.spans[idx];
   s.classList.add("leyendo");
   if (forzar || Date.now() > lectura.manualHasta) s.scrollIntoView({ block: "center", behavior: forzar ? "auto" : "smooth" });
+}
+
+// ----- destacador y frases destacadas -----
+// Se guardan solo en este teléfono (no viajan en el zip al compartir el libro).
+// Clave: "p:<capítulo>:<frase>" en libros con texto sincronizado; "e:<sección>:<párrafo>" en lectura libre.
+const modoLectura = { destacar: false, estrella: false };
+const AVISO_DESTACAR = "Un toque: la frase entera. Dos toques rápidos donde empieza y uno donde termina: un trozo. Toca lo destacado para quitarlo.";
+const destacados = () => (estado.libro ? leerPref("destacados:" + estado.libro.id, {}) : {});
+const guardarDestacados = d => { if (estado.libro) guardarPref("destacados:" + estado.libro.id, d); };
+
+function iconoTexto(abierto) {
+  $("ico-abrir-texto").toggleAttribute("hidden", abierto);
+  $("ico-cerrar-texto").toggleAttribute("hidden", !abierto);
+  $("btn-texto").setAttribute("aria-label", abierto ? "Volver al reproductor" : "Seguir el texto");
+}
+function pintarDestacados() {
+  const d = destacados();
+  const frases = [...$("texto-contenido").querySelectorAll(".frase")];
+  const pos = new Map(frases.map((el, i) => [el.dataset.clave, i]));
+  const tramos = new Map();                                    // índice de frase → [[desde, hasta, color, clave]]
+  for (const [k, x] of Object.entries(d)) {
+    if (!k.startsWith("r:")) continue;
+    const ia = pos.get(x.a.k), ib = pos.get(x.b.k);
+    if (ia == null || ib == null) continue;
+    for (let i = ia; i <= ib; i++) {
+      const largo = frases[i].textContent.length;
+      if (!tramos.has(i)) tramos.set(i, []);
+      tramos.get(i).push([i === ia ? x.a.i : 0, i === ib ? x.b.i : largo, x.c, k]);
+    }
+  }
+  frases.forEach((el, i) => {
+    const x = d[el.dataset.clave];
+    el.classList.toggle("destacada", !!x);
+    el.dataset.color = x ? x.c : "";
+    const texto = el.textContent;
+    if (el.querySelector("mark") || tramos.has(i)) el.textContent = texto;   // quita marcas viejas
+    const ts = (tramos.get(i) || []).sort((a, b) => a[0] - b[0]);
+    if (!ts.length) return;
+    const frag = document.createDocumentFragment();
+    let cursor = 0;
+    for (const [a0, b, c, k] of ts) {
+      const a = Math.max(a0, cursor);
+      if (b <= a) continue;
+      if (a > cursor) frag.append(texto.slice(cursor, a));
+      const m = document.createElement("mark");
+      m.className = "tramo"; m.dataset.color = c; m.dataset.tramo = k; m.textContent = texto.slice(a, b);
+      frag.append(m); cursor = b;
+    }
+    if (cursor < texto.length) frag.append(texto.slice(cursor));
+    el.textContent = ""; el.append(frag);
+  });
+  if (lectura.actual >= 0) lectura.spans[lectura.actual]?.classList.add("leyendo");
+}
+// Toques con el destacador: uno = frase completa; dos rápidos = inicio de un tramo libre, y el siguiente toque = fin.
+const toques = { timer: 0, ultimo: 0, x: 0, y: 0, inicio: null };
+function puntoEnTexto(x, y) {
+  let nodo, off;
+  if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (!r) return null; nodo = r.startContainer; off = r.startOffset; }
+  else if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (!p) return null; nodo = p.offsetNode; off = p.offset; }
+  else return null;
+  const el = (nodo.nodeType === 3 ? nodo.parentElement : nodo)?.closest(".frase");
+  if (!el || !$("texto-contenido").contains(el)) return null;
+  const r = document.createRange(); r.setStart(el, 0); r.setEnd(nodo, off);
+  return { el, i: r.toString().length };
+}
+function ajustarPalabra(el, i, haciaAtras) {
+  const t = el.textContent;
+  if (haciaAtras) { while (i > 0 && !/\s/.test(t[i - 1])) i--; }
+  else { while (i < t.length && !/\s/.test(t[i])) i++; }
+  return i;
+}
+function toqueDestacar(e) {
+  const ahora = Date.now(), cerca = Math.abs(e.clientX - toques.x) < 40 && Math.abs(e.clientY - toques.y) < 40;
+  const doble = ahora - toques.ultimo < 350 && cerca;
+  toques.ultimo = ahora; toques.x = e.clientX; toques.y = e.clientY;
+  clearTimeout(toques.timer);
+  if (doble) {                                                  // marca dónde empieza el tramo
+    toques.ultimo = 0;
+    const p = puntoEnTexto(e.clientX, e.clientY);
+    if (!p) return;
+    toques.inicio = { k: p.el.dataset.clave, i: ajustarPalabra(p.el, p.i, true) };
+    marcarInicio(p.el, toques.inicio.i);
+    return;
+  }
+  const x = e.clientX, y = e.clientY, objetivo = e.target;
+  toques.timer = setTimeout(() => {
+    if (toques.inicio) return terminarTramo(x, y);
+    const tramo = objetivo.closest("mark.tramo");
+    if (tramo) return alternarTramo(tramo.dataset.tramo);
+    const f = objetivo.closest(".frase");
+    if (f) alternarDestacado(f);
+  }, 330);
+}
+function marcarInicio(el, i) {
+  document.querySelectorAll(".inicio-tramo").forEach(m => m.remove());
+  pintarDestacados();
+  const r = document.createRange();
+  let resto = i, nodo = null;
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  while ((nodo = w.nextNode())) { if (resto <= nodo.length) break; resto -= nodo.length; }
+  if (!nodo) return;
+  r.setStart(nodo, resto); r.collapse(true);
+  const m = document.createElement("span"); m.className = "inicio-tramo"; m.setAttribute("aria-hidden", "true");
+  r.insertNode(m);
+  $("aviso-destacar").textContent = "Ahora toca donde termina lo que quieres destacar.";
+}
+function terminarTramo(x, y) {
+  const ini = toques.inicio; toques.inicio = null;
+  const p = puntoEnTexto(x, y);                                 // antes de limpiar, para que nada se mueva
+  document.querySelectorAll(".inicio-tramo").forEach(m => { const padre = m.parentNode; m.remove(); padre.normalize(); });
+  $("aviso-destacar").textContent = AVISO_DESTACAR;
+  if (!p) { pintarDestacados(); return; }
+  const frases = [...$("texto-contenido").querySelectorAll(".frase")];
+  let a = { k: ini.k, i: ini.i, n: frases.findIndex(f => f.dataset.clave === ini.k) };
+  let b = { k: p.el.dataset.clave, i: p.i, n: frases.indexOf(p.el) };
+  if (b.n < a.n || (b.n === a.n && b.i < a.i)) [a, b] = [b, a];
+  a.i = ajustarPalabra(frases[a.n], a.i, true);
+  b.i = ajustarPalabra(frases[b.n], b.i, false);
+  let texto = "";
+  for (let n = a.n; n <= b.n; n++) {
+    const t = frases[n].textContent;
+    texto += t.slice(n === a.n ? a.i : 0, n === b.n ? b.i : t.length) + " ";
+  }
+  texto = texto.replace(/\s+/g, " ").trim();
+  if (!texto) { pintarDestacados(); return; }
+  const d = destacados();
+  d["r:" + Date.now().toString(36)] = { c: leerPref("colorDestacador", 0), t: texto, cap: capituloDe(frases[a.n]),
+    o: Date.now(), a: { k: a.k, i: a.i }, b: { k: b.k, i: b.i } };
+  guardarDestacados(d);
+  pintarDestacados();
+}
+function alternarTramo(k) {
+  const d = destacados(), color = leerPref("colorDestacador", 0);
+  if (!d[k]) return;
+  if (d[k].c === color) delete d[k]; else d[k].c = color;
+  guardarDestacados(d);
+  pintarDestacados();
+}
+function capituloDe(el) {
+  if (!lectura.libre) return `${estado.pista + 1}. ${estado.libro.pistas[estado.pista].nombre}`;
+  const sec = el.closest(".cap-epub"), secs = seccionesEpub();
+  const h = sec && sec.querySelector("h3");
+  return h ? h.textContent : `Parte ${secs.indexOf(sec) + 1}`;
+}
+function alternarDestacado(el) {
+  const d = destacados(), k = el.dataset.clave, color = leerPref("colorDestacador", 0);
+  if (d[k] && d[k].c === color) delete d[k];                       // mismo color: se quita
+  else d[k] = { c: color, t: el.textContent.trim(), cap: capituloDe(el), o: d[k]?.o || Date.now() };
+  guardarDestacados(d);
+  pintarDestacados();
+}
+function pintarColores() {
+  const c = leerPref("colorDestacador", 0);
+  document.querySelectorAll(".color-dest").forEach(b => b.classList.toggle("activo", +b.dataset.color === c));
+}
+// posición para ordenar: [capítulo o sección, frase o párrafo, letra]
+function ordenDe(k, x) {
+  const base = k.startsWith("r:") ? x.a.k : k;
+  return [...base.split(":").slice(1).map(Number), k.startsWith("r:") ? x.a.i : 0];
+}
+function listaDestacados() {
+  const d = destacados(), tipo = lectura.libre ? "e:" : "p:";
+  return Object.entries(d)
+    .filter(([k, x]) => (k.startsWith("r:") ? x.a.k : k).startsWith(tipo))
+    .sort(([ka, a], [kb, b]) => { const x = ordenDe(ka, a), y = ordenDe(kb, b); return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; })
+    .map(([k, v]) => ({ k, ...v }));
+}
+function pintarListaDestacados() {
+  const caja = $("lista-destacados"), lista = listaDestacados();
+  caja.innerHTML = "";
+  $("texto-capitulo").textContent = `★ Mis frases destacadas (${lista.length})`;
+  if (!lista.length) {
+    caja.innerHTML = '<p class="sin-epub">Aún no destacas frases en este libro.<br>Toca el destacador y luego una frase.</p>';
+    return;
+  }
+  const acciones = document.createElement("div");
+  acciones.className = "acciones-destacados";
+  acciones.innerHTML = '<button class="chip" id="btn-copiar-dest">Copiar</button><button class="chip" id="btn-compartir-dest">Compartir</button>';
+  caja.appendChild(acciones);
+  let capActual = null;
+  for (const x of lista) {
+    if (x.cap !== capActual) {
+      capActual = x.cap;
+      const h = document.createElement("h3"); h.textContent = x.cap; caja.appendChild(h);
+    }
+    const fila = document.createElement("p"); fila.className = "item-destacado";
+    const t = document.createElement("span"); t.className = "frase destacada"; t.dataset.color = x.c; t.textContent = x.t;
+    const ir = document.createElement("button"); ir.className = "ir-destacado"; ir.textContent = "Ir ▸";
+    ir.onclick = () => irADestacado(x.k);
+    fila.append(t, ir); caja.appendChild(fila);
+  }
+  $("btn-copiar-dest").onclick = () => copiarDestacados(false);
+  $("btn-compartir-dest").onclick = () => copiarDestacados(true);
+}
+function textoDestacados() {
+  const lista = listaDestacados();
+  let out = `${estado.libro.titulo}\n`, cap = null;
+  for (const x of lista) {
+    if (x.cap !== cap) { cap = x.cap; out += `\n${cap}\n`; }
+    out += `«${x.t}»\n`;
+  }
+  return out.trim();
+}
+async function copiarDestacados(compartir) {
+  const texto = textoDestacados();
+  if (compartir && navigator.share) {
+    try { await navigator.share({ title: estado.libro.titulo, text: texto }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(texto); avisar(compartir ? "Copiadas. Pégalas donde quieras compartirlas." : "Frases copiadas."); }
+  catch { avisar("No pude copiar las frases."); }
+}
+async function irADestacado(k) {
+  salirModos();
+  const x = destacados()[k];
+  if (k.startsWith("r:") && x) k = x.a.k;
+  const [tipo, a, b] = k.split(":");
+  if (tipo === "p" && +a !== estado.pista) {
+    await cargarPista(+a, estado.libro.pistas[+a].frases[+b].t, false);
+  }
+  const el = $("texto-contenido").querySelector(`[data-clave="${k}"]`);
+  if (!el) return;
+  if (tipo === "p") { audio.currentTime = estado.libro.pistas[+a].frases[+b].t; }
+  lectura.manualHasta = Date.now() + 6000;
+  el.scrollIntoView({ block: "center" });
+  el.classList.add("parpadeo"); setTimeout(() => el.classList.remove("parpadeo"), 1600);
+}
+function pintarModos() {
+  const { destacar, estrella } = modoLectura;
+  $("btn-destacador").classList.toggle("activo-dest", destacar);
+  $("btn-destacador").setAttribute("aria-pressed", destacar);
+  $("btn-estrella").classList.toggle("activo-estrella", estrella);
+  $("btn-estrella").setAttribute("aria-pressed", estrella);
+  $("fila-colores").hidden = !destacar;
+  $("aviso-destacar").hidden = !destacar;
+  $("panel-texto").classList.toggle("destacando", destacar);
+  $("texto-contenido").hidden = estrella;
+  $("lista-destacados").hidden = !estrella;
+  if (destacar) pintarColores();
+}
+function salirModos() {
+  const estaba = modoLectura.estrella;
+  if (toques.inicio) { toques.inicio = null; $("aviso-destacar").textContent = AVISO_DESTACAR; if (estado.libro && !$("panel-texto").hidden) pintarDestacados(); }
+  modoLectura.destacar = modoLectura.estrella = false;
+  pintarModos();
+  if (estaba && estado.libro) {
+    $("lista-destacados").innerHTML = "";
+    if (lectura.libre) { $("texto-capitulo").textContent = "Lectura libre (sin sincronía)"; $("panel-texto").scrollTop = estado.libro.lecturaScroll || 0; }
+    else { lectura.pista = -1; seguirTexto(true); }
+  }
+}
+function alternarDestacador() {
+  const activar = !modoLectura.destacar;
+  if (modoLectura.estrella) salirModos();
+  modoLectura.destacar = activar;
+  if (activar) { audio.pause(); $("fila-tamano").hidden = true; }
+  pintarModos();
+}
+function alternarEstrella() {
+  if (modoLectura.estrella) { salirModos(); return; }
+  audio.pause();
+  modoLectura.destacar = false;
+  modoLectura.estrella = true;
+  $("fila-tamano").hidden = true;
+  pintarModos();
+  pintarListaDestacados();
+  $("panel-texto").scrollTop = 0;
 }
 
 // ---------- etapa 2: generar en Kaggle ----------
@@ -1593,7 +1874,9 @@ $("btn-velocidad").onclick = cambiarVelocidad;
 $("btn-dormir").onclick = cambiarDormir;
 $("btn-volver").onclick = () => { guardarPosicion(true); guardarPref("ultimoLibro", null); mostrarBiblioteca(); };
 $("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : (guardarPref("textoAbierto", false), cerrarTexto()));
-$("btn-cerrar-texto").onclick = () => { guardarPref("textoAbierto", false); cerrarTexto(); };
+$("btn-destacador").onclick = alternarDestacador;
+$("btn-estrella").onclick = alternarEstrella;
+document.querySelectorAll(".color-dest").forEach(b => { b.onclick = () => { guardarPref("colorDestacador", +b.dataset.color); pintarColores(); }; });
 $("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value = ""; agregarEpub(f); };
 // lectura libre: recordar hasta dónde bajó la persona
 let guardadoScroll;
@@ -1603,7 +1886,7 @@ $("panel-texto").addEventListener("scroll", () => {
   clearTimeout(guardadoScroll);
   guardadoScroll = setTimeout(() => { estado.libro.lecturaScroll = $("panel-texto").scrollTop; BD.guardarLibro(estado.libro).catch(() => {}); }, 600);
 }, { passive: true });
-$("btn-play-texto").onclick = alternar;
+$("btn-play-texto").onclick = () => { if (modoLectura.destacar || modoLectura.estrella) salirModos(); alternar(); };
 $("btn-cap-ant").onclick = () => cambiarCapLectura(-1);
 $("btn-cap-sig").onclick = () => cambiarCapLectura(1);
 $("btn-tamano").onclick = () => { $("fila-tamano").hidden = !$("fila-tamano").hidden; };

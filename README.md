@@ -11,6 +11,7 @@ App para el celular (se instala desde Chrome) para escuchar audiolibros generado
 - Barra de progreso del libro completo, dividida por capítulos.
 - Portada propia para cada libro.
 - **Seguir el texto:** si el libro se generó desde un EPUB con el notebook, el `.zip` trae un `.json` por capítulo y la app resalta la parte que se está leyendo. Si el libro se agregó solo con audio, puedes abrir su EPUB y leerlo libremente (sin sincronía).
+- **Destacador:** en la vista de texto puedes destacar frases completas (un toque) o un trozo libre (dos toques rápidos donde empieza y uno donde termina) en 3 colores. La estrella muestra solo tus frases destacadas, para copiarlas o compartirlas. Se guardan solo en tu teléfono.
 - Recuerda dónde quedaste en cada libro.
 
 ## Cómo instalarla en Android
