@@ -7,11 +7,11 @@
   <meta name="theme-color" content="#1E1A19">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
-  <style>html,body{margin:0;background:#EFE4D8;height:100%}body{display:grid;place-items:center}img{width:min(62vw,280px);height:auto}
+  <style>html,body{margin:0;background:#EFE4D8;height:100%}body{display:grid;place-items:center}img{width:min(62vw,280px);height:auto;animation:aparece .5s ease both}@keyframes aparece{from{opacity:0;transform:scale(.97)}}
     @media(prefers-color-scheme:dark){html,body{background:#1A1516}}</style>
 </head>
 <body>
-<picture><source srcset="logo-claro.png" media="(prefers-color-scheme: dark)"><img src="logo.png" alt=""></picture>
+<picture><source srcset="logo-claro.png" media="(prefers-color-scheme: dark)"><img src="logo.png" alt="" width="640" height="640"></picture>
 <script>
 // "Choro y Tinta" es la misma app con otra piel: se carga la página principal (../index.html)
 // y solo se cambian el nombre, el logo, los colores y el ícono. Todo el código es compartido.
@@ -22,6 +22,9 @@
   html = html
     .replace(/<html([^>]*)>/i, '<html$1 class="tema-choro">')
     .replace(/<head>/i, '<head><base href="../"><script>window.TEMA_APP = { id: "choro", nombre: "Choro y Tinta", logo: "choro/logo.png", logoOscuro: "choro/logo-claro.png" };<\/script>')
+    // La pantalla de carga trae el logo del club desde el principio, en el mismo lugar que esta página:
+    // así el paso de esta página a la app no se nota (antes se colaba un instante el ícono de audiolibro)
+    .replace(/<img id="carga-logo"[^>]*>/i, '<picture><source srcset="choro/logo-claro.png" media="(prefers-color-scheme: dark)"><img id="carga-logo" src="choro/logo.png" alt="" width="640" height="640"></picture>')
     .replace(/<title>[^<]*<\/title>/i, "<title>Choro y Tinta</title>")
     .replace(/<meta name="theme-color"[^>]*>/i, '<meta name="theme-color" content="#1E1A19">')
     .replace(/<link rel="manifest"[^>]*>/i, '<link rel="manifest" href="choro/manifest.webmanifest">')
