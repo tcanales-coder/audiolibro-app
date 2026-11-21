@@ -334,8 +334,6 @@ mark.tramo { border-radius: 3px; }
 .panel-texto.noche .frase.destacada, .panel-texto.noche mark.tramo { background: color-mix(in srgb, var(--dest) 38%, transparent); color: #efe6d6; box-shadow: none; }
 .panel-texto.destacando .texto-contenido { -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .panel-texto.destacando .texto-contenido .frase { cursor: cell; }
-.inicio-tramo { display: inline-block; width: 3px; height: 1.2em; margin: 0 1px -0.2em; border-radius: 2px; background: var(--acento); animation: latido 1s infinite; }
-@keyframes latido { 50% { opacity: .3; } }
 .aviso-destacar {
   margin: 8px 0 0; padding: 8px 10px; border-radius: 10px; background: #fff6c8; color: #5a4a00;
   font-size: .82rem; line-height: 1.3; text-align: center;
@@ -358,3 +356,15 @@ mark.tramo { border-radius: 3px; }
 .frase.parpadeo, .frase.parpadeo mark { animation: parpadeo .5s 3; }
 @keyframes parpadeo { 50% { outline: 3px solid var(--acento); outline-offset: 2px; } }
 .panel-texto.destacando .zona-brillo { display: none; }   /* mientras se destaca, el borde izquierdo también es texto */
+
+/* Marcadores para ajustar lo destacado (como los del teléfono) */
+.tirador {
+  position: absolute; z-index: 3; width: 22px; height: 22px; margin-top: 1px;
+  background: var(--acento); touch-action: none; cursor: grab;
+  box-shadow: 0 1px 3px rgb(0 0 0 / .3);
+}
+.tirador::before { content: ""; position: absolute; inset: -14px; }   /* zona más grande para el dedo */
+.tirador.inicio { transform: translateX(-100%); border-radius: 50% 0 50% 50%; }
+.tirador.fin { border-radius: 0 50% 50% 50%; }
+.tirador.arrastrando { transform: translateX(-100%) scale(1.15); }
+.tirador.fin.arrastrando { transform: scale(1.15); }
