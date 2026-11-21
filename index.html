@@ -27,8 +27,6 @@
   <div id="pantalla-carga" aria-hidden="true"><img id="carga-logo" src="icons/icon.svg" alt=""></div>
   <script>
     (function () {
-      var t = window.TEMA_APP, img = document.getElementById("carga-logo");
-      if (t && t.logo) img.src = (t.logoOscuro && matchMedia("(prefers-color-scheme: dark)").matches) ? t.logoOscuro : t.logo;
       var inicio = Date.now(), listo = false;
       function quitar() {
         if (listo) return; listo = true;
