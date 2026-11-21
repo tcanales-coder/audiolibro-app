@@ -498,15 +498,41 @@ async function revisarSiQuedoAMedias(l) {
 }
 
 // "Generar lo que falta": el libro vuelve a generarse desde donde quedó (los capítulos hechos no se repiten).
+// Primero se lanza (o se retoma) la corrida nueva y recién después se abre el avance:
+// así nunca se vuelve a revisar la corrida vieja, que podría darse por terminada.
 async function seguirLibroAMedias(l) {
-  const g = { ...l.generado, aMedias: false, revisado: false, etapa: "resto", estado: "COMPLETE", pausado: true };
-  l.generando = g; delete l.generado;
-  await BD.guardarLibro(l);
+  if (procesando.has(l.id)) return;
+  procesando.add(l.id);
+  const previo = l.generado;
+  const g = { ...previo, partes: [...(previo.partes || [previo.kernel])], aMedias: false, revisado: false,
+              etapa: "resto", estado: "QUEUED", pausado: false, cortado: false, archivos: null };
+  avisar("Pidiéndole a Kaggle lo que falta…");
+  try {
+    // ¿Ya hay una corrida andando de un intento anterior? Se usa esa, para no gastar horas dos veces.
+    const candidatas = [g.kernel, `${g.partes[0]}-p${g.partes.length + 1}`];
+    let andando = null;
+    for (const k of candidatas) {
+      try { const st = await KAGGLE.estado(k); if (st.estado === "RUNNING" || st.estado === "QUEUED") { andando = { k, st }; break; } } catch {}
+    }
+    l.generando = g; delete l.generado;
+    if (andando) {
+      if (!g.partes.includes(andando.k)) g.partes.push(andando.k);
+      g.kernel = andando.k; g.estado = andando.st.estado;
+    } else {
+      await lanzarSiguienteParte(l);
+    }
+    await BD.guardarLibro(l);
+  } catch (e) {
+    l.generado = previo; delete l.generando;
+    await BD.guardarLibro(l);
+    avisar("No se pudo seguir: " + e.message, 6000);
+    return;
+  } finally { procesando.delete(l.id); }
   abrirGenerando(l);
-  pintarGenerando("Lanzando lo que falta…");
-  try { await lanzarSiguienteParte(l); pintarGenerando(); }
-  catch (e) { pintarGenerando("No se pudo seguir: " + e.message + ". Toca Continuar para reintentar."); }
 }
+
+// Kaggle dio la corrida por terminada pero faltan capítulos del libro: no se da por completo.
+function faltanCapitulos(l, g) { return !!g.capitulosTotales && l.pistas.length < g.capitulosTotales; }
 function pintarAvisoGenerando() {
   const l = estado.libro, g = l && l.generando, a = $("aviso-generando");
   const medias = l && !g && l.generado && l.generado.aMedias;
@@ -1670,6 +1696,7 @@ async function actualizarGenerando() {
       const salida = await KAGGLE.archivosDeSalida(g.kernel);
       g.pausado = !!(salida.registro && salida.registro.pausado);
       g.cortado = !!(salida.registro && salida.registro.cortado);
+      if (salida.registro && salida.registro.capitulosTotales) g.capitulosTotales = salida.registro.capitulosTotales;
       g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
       if (g.pausado) await importarSalida(l, t => pintarGenerando(t));   // lo que alcanzó a hacer ya se puede escuchar
       if (g.etapa === "primero" && !g.pausado) await procesarPrimero(l, t => pintarGenerando(t));
@@ -1789,13 +1816,17 @@ async function bajarResto(l) {
     g.pausado = !!(salida.registro && salida.registro.pausado);
     g.cortado = !!(salida.registro && salida.registro.cortado);
     g.archivos = salida.archivos.map(f => ({ nombre: f.fileName, url: f.url }));
+    if (salida.registro && salida.registro.capitulosTotales) g.capitulosTotales = salida.registro.capitulosTotales;
+    if (!g.pausado) {
+      await importarSalida(l, () => {});
+      if (faltanCapitulos(l, g)) g.pausado = g.cortado = true;
+    }
     if (g.pausado) {
       await importarSalida(l, () => {});
       await BD.guardarLibro(l);
       avisar(`La segunda parte de “${l.titulo}” se detuvo antes de terminar. Ábrela para seguir.`, 6000);
       return;
     }
-    await importarSalida(l, () => {});
     l.generado = { ...g, archivos: undefined };
     delete l.generando;
     await BD.guardarLibro(l);
@@ -1816,6 +1847,11 @@ async function descargarGeneradoSinRepetir(l, g) {
   try {
     await importarSalida(l, t => pintarGenerando(t));
     if (!l.pistas.length) throw new Error("no llegó ningún capítulo");
+    if (faltanCapitulos(l, g)) {             // Kaggle cortó sin avisar: queda para Continuar
+      g.pausado = g.cortado = true;
+      await BD.guardarLibro(l);
+      return pintarGenerando();
+    }
     l.generado = { ...g, archivos: undefined };
     delete l.generando;
     await BD.guardarLibro(l);
