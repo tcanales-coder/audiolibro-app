@@ -267,6 +267,16 @@ dialog { max-height: 90dvh; overflow-y: auto; }
 .gen-icono.listo { border-color: var(--acento); }
 .gen-icono.error { border-color: var(--peligro); }
 @keyframes girar { to { transform: rotate(360deg); } }
+#btn-gen-actualizar { transition: transform .1s ease, opacity .2s ease; }
+#btn-gen-actualizar:active { transform: scale(.97); }
+#btn-gen-actualizar.consultando { opacity: .75; display: flex; align-items: center; justify-content: center; gap: 10px; }
+#btn-gen-actualizar.consultando::before {
+  content: ""; width: 16px; height: 16px; border-radius: 50%;
+  border: 2.5px solid currentColor; border-top-color: transparent; animation: girar .8s linear infinite;
+}
+.gen-actualizado { min-height: 1.3em; margin: 8px 0 0; text-align: center; font-size: .9rem; color: var(--suave); }
+.gen-actualizado.destello { animation: destello 1.2s ease; }
+@keyframes destello { 0% { color: var(--acento); transform: scale(1.06); } 100% { color: var(--suave); transform: none; } }
 .gen-estado { font-size: 1.2rem; font-weight: 600; margin: 0 0 4px; }
 .barra-gen { height: 8px; border-radius: 6px; background: var(--linea); overflow: hidden; margin: 14px 0 4px; }
 .barra-gen span { display: block; height: 100%; width: 0; background: var(--acento); transition: width .4s; }

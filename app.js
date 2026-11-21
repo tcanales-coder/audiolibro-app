@@ -1609,7 +1609,6 @@ async function confirmarMuestra() {
   try { await BD.borrarArchivo("muestra-" + l.id); } catch {}
   Object.assign(g, { fase: "libro", kernel: slug, partes: [slug], estado: "QUEUED", muestraLista: false, inicio: Date.now(),
                      etapa: g.modo === "parte" ? "primero" : "", importados: [] });
-  $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${slug}`;
   $("btn-muestra-ok").disabled = false;
   await BD.guardarLibro(l);
   pintarGenerando();
@@ -1619,13 +1618,13 @@ async function confirmarMuestra() {
 async function abrirGenerando(l) {
   l = enUso(l);
   generacion.libro = l;
+  $("gen-actualizado").textContent = "";
   $("vista-biblioteca").hidden = true;
   $("vista-reproductor").hidden = true;
   $("vista-generando").hidden = false;
   $("btn-volver").hidden = false;
   $("btn-texto").hidden = true;
   $("titulo-barra").textContent = l.titulo;
-  $("gen-enlace").href = `https://www.kaggle.com/code/${l.generando.usuario}/${l.generando.kernel}`;
   pintarGenerando();
   await actualizarGenerando();
   clearInterval(generacion.reloj);
@@ -1679,10 +1678,12 @@ function pintarGenerando(detalle) {
   $("btn-gen-descargar").hidden = muestra || !(g.estado === "COMPLETE" && !g.pausado);
   $("btn-gen-continuar").hidden = muestra || !(g.estado === "COMPLETE" && g.pausado);
   $("btn-gen-actualizar").hidden = muestra ? !!g.muestraLista : g.estado === "COMPLETE";
+  $("gen-actualizado").hidden = $("btn-gen-actualizar").hidden;
   $("gen-muestra").hidden = !(muestra && (g.muestraLista || g.estado === "ERROR"));
   $("btn-gen-escuchar").hidden = !generacion.libro.pistas.length;
-  if (generacion.libro.pistas.length) $("btn-gen-actualizar").className = "boton-secundario";
-  else $("btn-gen-actualizar").className = "boton-principal";
+  const conPistas = !!generacion.libro.pistas.length;   // classList: no borrar "consultando" si está girando
+  $("btn-gen-actualizar").classList.toggle("boton-secundario", conPistas);
+  $("btn-gen-actualizar").classList.toggle("boton-principal", !conPistas);
   $("audio-muestra").hidden = !g.muestraLista;
   $("btn-muestra-ok").hidden = !g.muestraLista;
   if (muestra) $("gen-barra").style.width = g.muestraLista ? "100%" : g.estado === "RUNNING" ? "30%" : "5%";
@@ -1704,7 +1705,6 @@ async function estadoKernel(g) {
     if (alt === g.kernel || !/403|404/.test(e.message)) throw e;
     const st = await KAGGLE.estado(alt);
     g.kernel = alt;
-    $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${alt}`;
     return st;
   }
 }
@@ -1712,7 +1712,11 @@ async function estadoKernel(g) {
 async function actualizarGenerando() {
   const l = generacion.libro, g = l.generando;
   if (g.fase === "muestra" && g.muestraLista) { pintarGenerando(); return pintarAudioMuestra(); }
-  $("btn-gen-actualizar").disabled = true;
+  const boton = $("btn-gen-actualizar");
+  boton.disabled = true;
+  boton.classList.add("consultando");
+  boton.textContent = "Consultando a Kaggle…";
+  let bien = false;
   try {
     const st = await estadoKernel(g);
     g.estado = st.estado; g.error = st.error;
@@ -1748,10 +1752,19 @@ async function actualizarGenerando() {
     await BD.guardarLibro(l);
     pintarGenerando();
     if (g.muestraLista) await pintarAudioMuestra();
+    bien = true;
   } catch (e) {
     pintarGenerando("No pude consultar a Kaggle: " + e.message);
   } finally {
-    $("btn-gen-actualizar").disabled = false;
+    boton.disabled = false;
+    boton.classList.remove("consultando");
+    boton.textContent = "Actualizar";
+    // Señal de que sí se consultó: la hora de la última revisión, con un destello suave
+    const nota = $("gen-actualizado");
+    if (bien) {
+      nota.textContent = "✓ Revisado a las " + new Date().toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+      nota.classList.remove("destello"); void nota.offsetWidth; nota.classList.add("destello");
+    }
   }
 }
 
@@ -1772,7 +1785,6 @@ async function continuarGeneracion() {
   pintarGenerando("Lanzando la siguiente parte…");
   try {
     await lanzarSiguienteParte(l);
-    $("gen-enlace").href = `https://www.kaggle.com/code/${g.usuario}/${g.kernel}`;
     pintarGenerando();
   } catch (e) { pintarGenerando("No se pudo continuar: " + e.message); }
 }
