@@ -297,11 +297,17 @@ function guardarCompartido() {
 }
 
 // ---------- biblioteca ----------
+// "Terminado" solo cuenta si la posición sigue en el último capítulo: si después llegaron más capítulos
+// (la segunda parte de un libro), el avance vuelve a medirse sobre el libro completo.
+function estaTerminado(l) {
+  return !!l.terminado && (l.pos?.pista || 0) >= l.pistas.length - 1;
+}
+
 function progresoLibro(l) {
   const total = l.pistas.reduce((s, p) => s + (p.duracion || 0), 0);
   if (!total) return { total: 0, pct: 0 };
   const hecho = l.pistas.slice(0, l.pos.pista).reduce((s, p) => s + (p.duracion || 0), 0) + (l.pos.tiempo || 0);
-  return { total, pct: l.terminado ? 100 : Math.min(100, Math.round((hecho / total) * 100)) };
+  return { total, pct: estaTerminado(l) ? 100 : Math.min(100, Math.round((hecho / total) * 100)) };
 }
 
 async function mostrarBiblioteca() {
@@ -736,7 +742,7 @@ function actualizarTiempo() {
     pintarBarra(tiempoAFraccion(pos), pos);
   }
   $("t-total").textContent = "-" + hhmmss(Math.max(0, total - pos));
-  const pct = estado.libro.terminado ? 100 : (total ? Math.floor(pos / total * 100) : 0);
+  const pct = estaTerminado(estado.libro) ? 100 : (total ? Math.floor(pos / total * 100) : 0);
   $("pct-total").textContent = pct + "%";
 }
 
@@ -1809,6 +1815,7 @@ async function importarSalida(l, avisarAvance) {
     await BD.guardarArchivo(idArchivo, pistas[i].blob);
     l.pistas.push({ nombre: nombreBonito(pistas[i].nombre), idArchivo, duracion: await duracionDe(pistas[i].blob), frases: pistas[i].frases || null });
   }
+  if (pistas.length) l.terminado = false;   // llegaron capítulos nuevos: el libro ya no está terminado
   g.importados.push(...archivos.map(f => f.name));
   await BD.guardarLibro(l);
   pedirAlmacenamientoPersistente();
@@ -1983,7 +1990,12 @@ audio.addEventListener("ended", async () => {
   if (DORMIR[estado.dormirIdx] === -1) { estado.dormirIdx = 0; pintarDormir(); }
   else if (estado.pista < l.pistas.length - 1) return cargarPista(estado.pista + 1, 0, true);
   if (estado.pista >= l.pistas.length - 1) {
-    l.terminado = true; await guardarPosicion(true); avisar("¡Terminaste el libro! 🎉");
+    if (l.generando || (l.generado && l.generado.aMedias)) {
+      // Se acabó lo que hay, pero el resto del libro todavía no llega: no lo damos por terminado
+      await guardarPosicion(true); avisar("Llegaste al final de lo que hay. El resto del libro viene en camino.");
+    } else {
+      l.terminado = true; await guardarPosicion(true); avisar("¡Terminaste el libro! 🎉");
+    }
   } else {
     await cargarPista(estado.pista + 1, 0, false);   // dejarlo listo en el siguiente capítulo
   }
