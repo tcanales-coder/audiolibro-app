@@ -484,7 +484,8 @@ async function abrirLibro(id) {
 // Se revisa una sola vez por libro mirando el registro de esa corrida.
 async function revisarSiQuedoAMedias(l) {
   const g = l.generado;
-  if (!g || !g.kernel || g.revisado || !KAGGLE.listo()) return;
+  if (!g || !g.kernel || !KAGGLE.listo()) return;
+  if (g.revisado) return retomarSiAnda(l);
   try {
     const { registro } = await KAGGLE.archivosDeSalida(g.kernel);
     g.revisado = true;
@@ -495,6 +496,7 @@ async function revisarSiQuedoAMedias(l) {
     await BD.guardarLibro(l);
     if (estado.libro === l) pintarAvisoGenerando();
   } catch {}
+  retomarSiAnda(l);
 }
 
 // "Generar lo que falta": el libro vuelve a generarse desde donde quedó (los capítulos hechos no se repiten).
@@ -509,26 +511,67 @@ async function seguirLibroAMedias(l) {
   avisar("Pidiéndole a Kaggle lo que falta…");
   try {
     // ¿Ya hay una corrida andando de un intento anterior? Se usa esa, para no gastar horas dos veces.
-    const candidatas = [g.kernel, `${g.partes[0]}-p${g.partes.length + 1}`];
-    let andando = null;
-    for (const k of candidatas) {
-      try { const st = await KAGGLE.estado(k); if (st.estado === "RUNNING" || st.estado === "QUEUED") { andando = { k, st }; break; } } catch {}
-    }
+    let andando = await buscarCorridaAndando(g);
     l.generando = g; delete l.generado;
-    if (andando) {
-      if (!g.partes.includes(andando.k)) g.partes.push(andando.k);
-      g.kernel = andando.k; g.estado = andando.st.estado;
-    } else {
-      await lanzarSiguienteParte(l);
+    if (!andando) {
+      try { await lanzarSiguienteParte(l); }
+      catch (e) {
+        // Kaggle no deja más de 2 corridas con GPU a la vez: puede que una de ellas sea de este libro
+        const max = /batch GPU session|session count/i.test(e.message);
+        if (max) andando = await buscarCorridaAndando(g);
+        if (!andando) throw max ? new Error("Kaggle ya tiene 2 corridas andando, que es su máximo. Cuando termine una, toca de nuevo el aviso.") : e;
+      }
     }
+    if (andando) adoptarCorrida(g, andando);
     await BD.guardarLibro(l);
   } catch (e) {
     l.generado = previo; delete l.generando;
     await BD.guardarLibro(l);
-    avisar("No se pudo seguir: " + e.message, 6000);
+    avisar(e.message.startsWith("Kaggle ya tiene") ? e.message : "No se pudo seguir: " + e.message, 8000);
     return;
   } finally { procesando.delete(l.id); }
   abrirGenerando(l);
+}
+
+// Busca en Kaggle una corrida de este libro que siga andando (de un intento anterior).
+// Las continuaciones se llaman <primera>-p2, -p3…; se revisan esas y las que liste Kaggle.
+const numeroParte = k => +((String(k).match(/-p(\d+)$/) || [0, 1])[1]);
+async function buscarCorridaAndando(g) {
+  const base = (g.partes && g.partes[0]) || g.kernel;
+  const nombres = new Set([g.kernel, ...(g.partes || [])]);
+  for (let n = 2; n <= (g.partes || []).length + 6; n++) nombres.add(`${base}-p${n}`);
+  try { (await KAGGLE.misNotebooks(base)).filter(k => k.startsWith(base)).forEach(k => nombres.add(k)); } catch {}
+  let mejor = null;
+  for (const k of nombres) {
+    try {
+      const st = await KAGGLE.estado(k);
+      if ((st.estado === "RUNNING" || st.estado === "QUEUED") && (!mejor || numeroParte(k) > numeroParte(mejor.k))) mejor = { k, st };
+    } catch {}
+  }
+  return mejor;
+}
+function adoptarCorrida(g, { k, st }) {
+  g.partes = [...new Set([...(g.partes || []), k])].sort((a, b) => numeroParte(a) - numeroParte(b));
+  g.kernel = k; g.estado = st.estado; g.pausado = false; g.cortado = false; g.archivos = null;
+}
+
+// Al abrir un libro a medias: si ya hay una corrida suya andando en Kaggle, se muestra su avance
+// en vez de "toca para generar lo que falta".
+const retomando = new Set();
+async function retomarSiAnda(l) {
+  const previo = l.generado;
+  if (!previo || !previo.aMedias || retomando.has(l.id) || procesando.has(l.id) || !KAGGLE.listo()) return;
+  retomando.add(l.id);
+  try {
+    const g = { ...previo, partes: [...(previo.partes || [previo.kernel])], aMedias: false, revisado: false, etapa: "resto" };
+    const andando = await buscarCorridaAndando(g);
+    if (!andando || !l.generado) return;
+    adoptarCorrida(g, andando);
+    l.generando = g; delete l.generado;
+    await BD.guardarLibro(l);
+    if (estado.libro === l && !$("vista-reproductor").hidden) pintarAvisoGenerando();
+    if (!$("vista-biblioteca").hidden) mostrarBiblioteca();
+  } catch {} finally { retomando.delete(l.id); }
 }
 
 // Kaggle dio la corrida por terminada pero faltan capítulos del libro: no se da por completo.
@@ -1787,6 +1830,7 @@ async function revisarPrimeros() {
   try { libros = await BD.libros(); } catch { return; }
   for (const l0 of libros) {
     const l = enUso(l0), g = l.generando;
+    if (!g && l.generado && l.generado.aMedias) { await retomarSiAnda(l); continue; }
     if (!g || g.fase === "muestra" || !(g.etapa === "primero" || g.etapa === "resto") || procesando.has(l.id)) continue;
     try {
       const st = await KAGGLE.estado(g.kernel);

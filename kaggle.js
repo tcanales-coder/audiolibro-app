@@ -262,8 +262,14 @@ const KAGGLE = (() => {
     return r.blob();
   }
 
+  // Notebooks de la persona cuyo nombre contiene `buscar` (solo la parte final de la dirección).
+  async function misNotebooks(buscar) {
+    const r = await api("kernels.KernelsApiService", "ListKernels", { user: ajustes().usuario, search: buscar, pageSize: 50 });
+    return (r.kernels || []).map(k => String(k.ref || k.slug || "").split("/").pop()).filter(Boolean);
+  }
+
   return {
     ajustes, guardarAjustes, listo, intermediario, probar, confirmarUsuario, crearDataset,
-    prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar, cuota,
+    prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar, cuota, misNotebooks,
   };
 })();

@@ -7,9 +7,11 @@
   <meta name="theme-color" content="#1E1A19">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
-  <style>html,body{margin:0;background:#EFE4D8}@media(prefers-color-scheme:dark){html,body{background:#1A1516}}</style>
+  <style>html,body{margin:0;background:#EFE4D8;height:100%}body{display:grid;place-items:center}img{width:min(62vw,280px);height:auto}
+    @media(prefers-color-scheme:dark){html,body{background:#1A1516}}</style>
 </head>
 <body>
+<picture><source srcset="logo-claro.png" media="(prefers-color-scheme: dark)"><img src="logo.png" alt=""></picture>
 <script>
 // "Choro y Tinta" es la misma app con otra piel: se carga la página principal (../index.html)
 // y solo se cambian el nombre, el logo, los colores y el ícono. Todo el código es compartido.
