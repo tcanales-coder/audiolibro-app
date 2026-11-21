@@ -1,5 +1,5 @@
 // Guarda la app en el teléfono para que abra sin internet.
-const VERSION = "audiolibro-v19";
+const VERSION = "audiolibro-v20";
 const ARCHIVOS = [
   "./", "index.html", "styles.css", "app.js", "db.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png", "kaggle.js",
@@ -22,7 +22,8 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: pregunta siempre al servidor si hay versión nueva, para no mezclar archivos viejos y nuevos
+    fetch(e.request, { cache: "no-cache" })
       .then(r => {
         if (r.ok && (r.type === "basic" || r.type === "cors")) {
           const copia = r.clone();

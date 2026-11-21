@@ -1,5 +1,12 @@
 // Audiolibro: biblioteca y reproductor (etapa 1).
 const $ = id => document.getElementById(id);
+// Justo después de una actualización, el teléfono puede mezclar la página vieja con el código nuevo
+// (o al revés). Si falta una pieza nueva de la página, se recarga una vez pidiendo todo de nuevo.
+if (!$("btn-destacador")) {
+  let recargada = false;
+  try { recargada = sessionStorage.getItem("recargaVersion") === "1"; sessionStorage.setItem("recargaVersion", "1"); } catch {}
+  if (!recargada) location.reload();
+} else { try { sessionStorage.removeItem("recargaVersion"); } catch {} }
 const audio = $("audio");
 const TEMA = window.TEMA_APP || null;
 const EXT_AUDIO = /\.(mp3|m4a|m4b|aac|ogg|oga|opus|wav|flac)$/i;
@@ -864,7 +871,7 @@ const TAMANOS = [0.8, 0.9, 1, 1.12, 1.25, 1.4, 1.6];
 function aplicarPreferenciasLectura() {
   const tam = leerPref("tamanoLetra", 1);
   $("texto-contenido").style.setProperty("--tam", tam);
-  $("lista-destacados").style.setProperty("--tam", tam);
+  $("lista-destacados")?.style.setProperty("--tam", tam);
   $("txt-tamano").textContent = Math.round(tam * 100) + "%";
   const noche = leerPref("lecturaNoche", false);
   $("panel-texto").classList.toggle("noche", noche);
@@ -981,8 +988,8 @@ const destacados = () => (estado.libro ? leerPref("destacados:" + estado.libro.i
 const guardarDestacados = d => { if (estado.libro) guardarPref("destacados:" + estado.libro.id, d); };
 
 function iconoTexto(abierto) {
-  $("ico-abrir-texto").toggleAttribute("hidden", abierto);
-  $("ico-cerrar-texto").toggleAttribute("hidden", !abierto);
+  $("ico-abrir-texto")?.toggleAttribute("hidden", abierto);
+  $("ico-cerrar-texto")?.toggleAttribute("hidden", !abierto);
   $("btn-texto").setAttribute("aria-label", abierto ? "Volver al reproductor" : "Seguir el texto");
 }
 function pintarDestacados() {
@@ -1198,6 +1205,7 @@ async function irADestacado(k) {
   el.classList.add("parpadeo"); setTimeout(() => el.classList.remove("parpadeo"), 1600);
 }
 function pintarModos() {
+  if (!$("btn-destacador")) return;
   const { destacar, estrella } = modoLectura;
   $("btn-destacador").classList.toggle("activo-dest", destacar);
   $("btn-destacador").setAttribute("aria-pressed", destacar);
@@ -1874,8 +1882,8 @@ $("btn-velocidad").onclick = cambiarVelocidad;
 $("btn-dormir").onclick = cambiarDormir;
 $("btn-volver").onclick = () => { guardarPosicion(true); guardarPref("ultimoLibro", null); mostrarBiblioteca(); };
 $("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : (guardarPref("textoAbierto", false), cerrarTexto()));
-$("btn-destacador").onclick = alternarDestacador;
-$("btn-estrella").onclick = alternarEstrella;
+if ($("btn-destacador")) $("btn-destacador").onclick = alternarDestacador;   // la página vieja no los tiene: que no impida mostrar los libros
+if ($("btn-estrella")) $("btn-estrella").onclick = alternarEstrella;
 document.querySelectorAll(".color-dest").forEach(b => { b.onclick = () => { guardarPref("colorDestacador", +b.dataset.color); pintarColores(); }; });
 $("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value = ""; agregarEpub(f); };
 // lectura libre: recordar hasta dónde bajó la persona
