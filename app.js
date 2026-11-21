@@ -2,7 +2,7 @@
 const $ = id => document.getElementById(id);
 // Justo después de una actualización, el teléfono puede mezclar la página vieja con el código nuevo
 // (o al revés). Si falta una pieza nueva de la página, se recarga una vez pidiendo todo de nuevo.
-if (!$("btn-destacador")) {
+if (!$("tirador-ini")) {
   let recargada = false;
   try { recargada = sessionStorage.getItem("recargaVersion") === "1"; sessionStorage.setItem("recargaVersion", "1"); } catch {}
   if (!recargada) location.reload();
@@ -929,7 +929,7 @@ function iniciarGestosLectura() {
 
   // un toque en el texto muestra u oculta los controles
   panel.addEventListener("click", e => {
-    if (e.target.closest("button, input, .texto-controles, .zona-brillo")) return;
+    if (e.target.closest("button, input, .texto-controles, .zona-brillo, .tirador")) return;
     if (modoLectura.destacar) { toqueDestacar(e); return; }
     if (modoLectura.estrella) return;
     mostrarControles($("texto-controles").hidden);
@@ -983,7 +983,7 @@ function seguirTexto(forzar = false) {
 // Se guardan solo en este teléfono (no viajan en el zip al compartir el libro).
 // Clave: "p:<capítulo>:<frase>" en libros con texto sincronizado; "e:<sección>:<párrafo>" en lectura libre.
 const modoLectura = { destacar: false, estrella: false };
-const AVISO_DESTACAR = "Un toque: la frase entera. Dos toques rápidos donde empieza y uno donde termina: un trozo. Toca lo destacado para quitarlo.";
+
 const destacados = () => (estado.libro ? leerPref("destacados:" + estado.libro.id, {}) : {});
 const guardarDestacados = d => { if (estado.libro) guardarPref("destacados:" + estado.libro.id, d); };
 
@@ -1029,9 +1029,12 @@ function pintarDestacados() {
     el.textContent = ""; el.append(frag);
   });
   if (lectura.actual >= 0) lectura.spans[lectura.actual]?.classList.add("leyendo");
+  pintarTiradores();
 }
 // Toques con el destacador: uno = frase completa; dos rápidos = inicio de un tramo libre, y el siguiente toque = fin.
-const toques = { timer: 0, ultimo: 0, x: 0, y: 0, inicio: null };
+// Destacador: un toque en una frase la destaca entera y muestra dos marcadores (inicio y fin)
+// que se arrastran como los del teléfono. Un toque sobre algo ya destacado lo quita.
+const tiradores = { activo: null, arrastre: null };
 function puntoEnTexto(x, y) {
   let nodo, off;
   if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (!r) return null; nodo = r.startContainer; off = r.startOffset; }
@@ -1048,85 +1051,106 @@ function ajustarPalabra(el, i, haciaAtras) {
   else { while (i < t.length && !/\s/.test(t[i])) i++; }
   return i;
 }
-function toqueDestacar(e) {
-  const ahora = Date.now(), cerca = Math.abs(e.clientX - toques.x) < 40 && Math.abs(e.clientY - toques.y) < 40;
-  const doble = ahora - toques.ultimo < 350 && cerca;
-  toques.ultimo = ahora; toques.x = e.clientX; toques.y = e.clientY;
-  clearTimeout(toques.timer);
-  if (doble) {                                                  // marca dónde empieza el tramo
-    toques.ultimo = 0;
-    const p = puntoEnTexto(e.clientX, e.clientY);
-    if (!p) return;
-    toques.inicio = { k: p.el.dataset.clave, i: ajustarPalabra(p.el, p.i, true) };
-    marcarInicio(p.el, toques.inicio.i);
-    return;
-  }
-  const x = e.clientX, y = e.clientY, objetivo = e.target;
-  toques.timer = setTimeout(() => {
-    if (toques.inicio) return terminarTramo(x, y);
-    const tramo = objetivo.closest("mark.tramo");
-    if (tramo) return alternarTramo(tramo.dataset.tramo);
-    const f = objetivo.closest(".frase");
-    if (f) alternarDestacado(f);
-  }, 330);
-}
-function marcarInicio(el, i) {
-  document.querySelectorAll(".inicio-tramo").forEach(m => m.remove());
-  pintarDestacados();
-  const r = document.createRange();
-  let resto = i, nodo = null;
-  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  while ((nodo = w.nextNode())) { if (resto <= nodo.length) break; resto -= nodo.length; }
-  if (!nodo) return;
-  r.setStart(nodo, resto); r.collapse(true);
-  const m = document.createElement("span"); m.className = "inicio-tramo"; m.setAttribute("aria-hidden", "true");
-  r.insertNode(m);
-  $("aviso-destacar").textContent = "Ahora toca donde termina lo que quieres destacar.";
-}
-function terminarTramo(x, y) {
-  const ini = toques.inicio; toques.inicio = null;
-  const p = puntoEnTexto(x, y);                                 // antes de limpiar, para que nada se mueva
-  document.querySelectorAll(".inicio-tramo").forEach(m => { const padre = m.parentNode; m.remove(); padre.normalize(); });
-  $("aviso-destacar").textContent = AVISO_DESTACAR;
-  if (!p) { pintarDestacados(); return; }
-  const frases = [...$("texto-contenido").querySelectorAll(".frase")];
-  let a = { k: ini.k, i: ini.i, n: frases.findIndex(f => f.dataset.clave === ini.k) };
-  let b = { k: p.el.dataset.clave, i: p.i, n: frases.indexOf(p.el) };
-  if (b.n < a.n || (b.n === a.n && b.i < a.i)) [a, b] = [b, a];
-  a.i = ajustarPalabra(frases[a.n], a.i, true);
-  b.i = ajustarPalabra(frases[b.n], b.i, false);
-  let texto = "";
-  for (let n = a.n; n <= b.n; n++) {
-    const t = frases[n].textContent;
-    texto += t.slice(n === a.n ? a.i : 0, n === b.n ? b.i : t.length) + " ";
-  }
-  texto = texto.replace(/\s+/g, " ").trim();
-  if (!texto) { pintarDestacados(); return; }
-  const d = destacados();
-  d["r:" + Date.now().toString(36)] = { c: leerPref("colorDestacador", 0), t: texto, cap: capituloDe(frases[a.n]),
-    o: Date.now(), a: { k: a.k, i: a.i }, b: { k: b.k, i: b.i } };
-  guardarDestacados(d);
-  pintarDestacados();
-}
-function alternarTramo(k) {
-  const d = destacados(), color = leerPref("colorDestacador", 0);
-  if (!d[k]) return;
-  if (d[k].c === color) delete d[k]; else d[k].c = color;
-  guardarDestacados(d);
-  pintarDestacados();
-}
 function capituloDe(el) {
   if (!lectura.libre) return `${estado.pista + 1}. ${estado.libro.pistas[estado.pista].nombre}`;
   const sec = el.closest(".cap-epub"), secs = seccionesEpub();
   const h = sec && sec.querySelector("h3");
   return h ? h.textContent : `Parte ${secs.indexOf(sec) + 1}`;
 }
-function alternarDestacado(el) {
-  const d = destacados(), k = el.dataset.clave, color = leerPref("colorDestacador", 0);
-  if (d[k] && d[k].c === color) delete d[k];                       // mismo color: se quita
-  else d[k] = { c: color, t: el.textContent.trim(), cap: capituloDe(el), o: d[k]?.o || Date.now() };
+const frasesVisibles = () => [...$("texto-contenido").querySelectorAll(".frase")];
+function textoDeTramo(a, b) {
+  const frases = frasesVisibles(), na = frases.findIndex(f => f.dataset.clave === a.k), nb = frases.findIndex(f => f.dataset.clave === b.k);
+  if (na < 0 || nb < 0) return "";
+  let texto = "";
+  for (let n = na; n <= nb; n++) {
+    const t = frases[n].textContent;
+    texto += t.slice(n === na ? a.i : 0, n === nb ? b.i : t.length) + " ";
+  }
+  return texto.replace(/\s+/g, " ").trim();
+}
+function toqueDestacar(e) {
+  const d = destacados();
+  const tramo = e.target.closest("mark.tramo");
+  if (tramo) { delete d[tramo.dataset.tramo]; guardarDestacados(d); tiradores.activo = null; pintarDestacados(); return; }
+  const f = e.target.closest(".frase");
+  if (!f) { tiradores.activo = null; pintarTiradores(); return; }
+  if (d[f.dataset.clave]) { delete d[f.dataset.clave]; guardarDestacados(d); pintarDestacados(); return; }   // destacado de la versión anterior
+  const a = { k: f.dataset.clave, i: 0 }, b = { k: f.dataset.clave, i: f.textContent.trimEnd().length };
+  const k = "r:" + Date.now().toString(36);
+  d[k] = { c: leerPref("colorDestacador", 0), t: textoDeTramo(a, b), cap: capituloDe(f), o: Date.now(), a, b };
   guardarDestacados(d);
+  tiradores.activo = k;
   pintarDestacados();
+}
+// rectángulo del borde de un tramo (inicio o fin) en la pantalla
+function bordeTramo(k, fin) {
+  const marcas = [...$("texto-contenido").querySelectorAll(`mark[data-tramo="${k}"]`)];
+  const m = fin ? marcas[marcas.length - 1] : marcas[0];
+  if (!m) return null;
+  const rects = [...m.getClientRects()].filter(r => r.width > 0);
+  if (!rects.length) return null;
+  let r = fin ? rects[rects.length - 1] : rects[0];
+  if (fin && /\s$/.test(m.textContent)) {                       // no contar el espacio final
+    const rg = document.createRange(), n = m.lastChild; rg.setStart(n, 0); rg.setEnd(n, n.length - 1);
+    const rr = [...rg.getClientRects()].filter(x => x.width > 0); if (rr.length) r = rr[rr.length - 1];
+  }
+  return { x: fin ? r.right : r.left, top: r.top, bottom: r.bottom };
+}
+function pintarTiradores() {
+  const panel = $("panel-texto"), ini = $("tirador-ini"), fin = $("tirador-fin");
+  if (!ini) return;
+  const k = tiradores.activo;
+  const ok = k && modoLectura.destacar && destacados()[k];
+  const p1 = ok && bordeTramo(k, false), p2 = ok && bordeTramo(k, true);
+  if (!p1 || !p2) { ini.hidden = fin.hidden = true; if (!tiradores.arrastre) tiradores.activo = ok ? k : null; return; }
+  const base = panel.getBoundingClientRect();
+  const poner = (el, p) => { el.hidden = false; el.style.left = (p.x - base.left) + "px"; el.style.top = (p.bottom - base.top + panel.scrollTop) + "px"; };
+  poner(ini, p1); poner(fin, p2);
+}
+function iniciarTiradores() {
+  ["tirador-ini", "tirador-fin"].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    const esFin = id === "tirador-fin";
+    el.addEventListener("pointerdown", e => {
+      e.preventDefault(); e.stopPropagation();
+      tiradores.arrastre = { fin: esFin, id: e.pointerId };
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("arrastrando");
+    });
+    el.addEventListener("pointermove", e => {
+      const ar = tiradores.arrastre;
+      if (!ar || ar.id !== e.pointerId) return;
+      const p = puntoEnTexto(e.clientX, e.clientY - 28);        // un poco más arriba que el dedo, para ver el texto
+      if (!p) return;
+      const d = destacados(), x = d[tiradores.activo];
+      if (!x) return;
+      const frases = frasesVisibles(), n = frases.indexOf(p.el);
+      const na = frases.findIndex(f => f.dataset.clave === x.a.k), nb = frases.findIndex(f => f.dataset.clave === x.b.k);
+      if (ar.fin) {
+        const i = ajustarPalabra(p.el, p.i, false);
+        if (n < na || (n === na && i <= x.a.i)) return;          // el fin no pasa al inicio
+        x.b = { k: p.el.dataset.clave, i };
+      } else {
+        const i = ajustarPalabra(p.el, p.i, true);
+        if (n > nb || (n === nb && i >= x.b.i)) return;
+        x.a = { k: p.el.dataset.clave, i };
+      }
+      x.t = textoDeTramo(x.a, x.b);
+      x.cap = capituloDe(frasesVisibles()[Math.min(na, n)] || p.el);
+      guardarDestacados(d);
+      pintarDestacados();
+    });
+    const soltar = e => {
+      if (!tiradores.arrastre || tiradores.arrastre.id !== e.pointerId) return;
+      tiradores.arrastre = null; el.classList.remove("arrastrando");
+      const d = destacados(), x = d[tiradores.activo];
+      if (x) { const f = frasesVisibles().find(f => f.dataset.clave === x.a.k); if (f) { x.cap = capituloDe(f); guardarDestacados(d); } }
+    };
+    el.addEventListener("pointerup", soltar);
+    el.addEventListener("pointercancel", soltar);
+    el.addEventListener("click", e => e.stopPropagation());
+  });
 }
 function pintarColores() {
   const c = leerPref("colorDestacador", 0);
@@ -1217,10 +1241,11 @@ function pintarModos() {
   $("texto-contenido").hidden = estrella;
   $("lista-destacados").hidden = !estrella;
   if (destacar) pintarColores();
+  pintarTiradores();
 }
 function salirModos() {
   const estaba = modoLectura.estrella;
-  if (toques.inicio) { toques.inicio = null; $("aviso-destacar").textContent = AVISO_DESTACAR; if (estado.libro && !$("panel-texto").hidden) pintarDestacados(); }
+  tiradores.activo = null;
   modoLectura.destacar = modoLectura.estrella = false;
   pintarModos();
   if (estaba && estado.libro) {
@@ -1884,7 +1909,12 @@ $("btn-volver").onclick = () => { guardarPosicion(true); guardarPref("ultimoLibr
 $("btn-texto").onclick = () => ($("panel-texto").hidden ? abrirTexto() : (guardarPref("textoAbierto", false), cerrarTexto()));
 if ($("btn-destacador")) $("btn-destacador").onclick = alternarDestacador;   // la página vieja no los tiene: que no impida mostrar los libros
 if ($("btn-estrella")) $("btn-estrella").onclick = alternarEstrella;
-document.querySelectorAll(".color-dest").forEach(b => { b.onclick = () => { guardarPref("colorDestacador", +b.dataset.color); pintarColores(); }; });
+document.querySelectorAll(".color-dest").forEach(b => { b.onclick = () => {
+  guardarPref("colorDestacador", +b.dataset.color); pintarColores();
+  const d = destacados(), x = d[tiradores.activo];                // si hay uno recién hecho, cambia su color
+  if (x) { x.c = +b.dataset.color; guardarDestacados(d); pintarDestacados(); }
+}; });
+iniciarTiradores();
 $("entrada-epub").onchange = e => { const f = e.target.files[0]; e.target.value = ""; agregarEpub(f); };
 // lectura libre: recordar hasta dónde bajó la persona
 let guardadoScroll;
