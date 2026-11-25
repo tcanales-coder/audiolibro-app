@@ -1355,7 +1355,6 @@ const ESTADOS = {
 };
 // Si un libro lleva rato "en la fila", averigua por qué: casi siempre es que se acabaron las horas de GPU de la semana.
 const MIN_FILA = 10;
-const MIN_REEMPUJE = 15, MAX_REEMPUJES = 4;
 async function revisarFila(g) {
   if (g.estado !== "QUEUED") { delete g.enFilaDesde; delete g.fila; delete g.reempujes; delete g.ultimoEmpuje; return; }
   g.enFilaDesde = g.enFilaDesde || Date.now();
@@ -1365,18 +1364,7 @@ async function revisarFila(g) {
     const total = c.total || 30;
     g.fila = { sinHoras: c.usadas >= total - 0.2, usadas: c.usadas, total, renueva: c.renueva ? c.renueva.getTime() : null };
   } catch { g.fila = { sinHoras: false }; }
-  // Con horas disponibles y 15 min en la fila: Kaggle la dejó pegada. Se vuelve a mandar (como detenerla y partirla de nuevo).
-  const desde = g.ultimoEmpuje || g.enFilaDesde;
-  if (!g.fila.sinHoras && (g.reempujes || 0) < MAX_REEMPUJES && Date.now() - desde >= MIN_REEMPUJE * 60000) {
-    try {
-      await KAGGLE.reempujar(g.kernel);
-      g.reempujes = (g.reempujes || 0) + 1; g.ultimoEmpuje = Date.now(); g.fila.reempujado = true;
-    } catch (e) {
-      // si Kaggle ya tiene sus 2 corridas andando rechaza el envío: hay que esperar igual
-      g.ultimoEmpuje = Date.now();
-      g.fila.ocupado = /Maximum batch GPU session/i.test(e.message);
-    }
-  }
+  // (Volver a mandarla se quitó: Kaggle no reemplaza la corrida en la fila, agrega otra versión y ocupa los 2 cupos.)
 }
 function cuandoRenueva(ms) {
   if (!ms) return "el viernes";
@@ -1390,10 +1378,7 @@ function textoFila(g) {
     return `Lleva ${lleva} en la fila porque se acabaron tus horas de GPU de esta semana ` +
       `(${String(Math.round(g.fila.usadas * 10) / 10).replace(".", ",")} de ${g.fila.total} h). ` +
       `Kaggle no lo empieza hasta que se renueven: ${cuandoRenueva(g.fila.renueva)}. No tienes que hacer nada; vuelve después de esa hora.`;
-  if (g.fila && g.fila.ocupado) return `Lleva ${lleva} en la fila. Kaggle ya tiene 2 corridas tuyas andando, que es su máximo; esta parte cuando termine una.`;
-  if (g.fila && g.reempujes) return `Lleva ${lleva} en la fila. Kaggle a veces deja corridas pegadas aunque tengas horas, así que la app la volvió a mandar ` +
-    `(${g.reempujes === 1 ? "1 vez" : g.reempujes + " veces"}). Puedes cerrar la app; al volver lo revisa de nuevo.`;
-  if (g.fila) return `Lleva ${lleva} en la fila. Todavía tienes horas de GPU. Si a los 15 minutos sigue igual, la app la vuelve a mandar sola.`;
+  if (g.fila) return `Lleva ${lleva} en la fila. Todavía tienes horas de GPU: es Kaggle, que a veces deja corridas esperando mucho rato. Puedes cerrar la app; al volver lo revisa de nuevo.`;
   return "Esperando una GPU libre. Suele tardar unos minutos.";
 }
 
