@@ -1353,6 +1353,34 @@ const ESTADOS = {
   SUBIENDO: "Subiendo a Kaggle…", QUEUED: "En la fila de Kaggle", RUNNING: "Generando el audio",
   COMPLETE: "¡Terminado!", ERROR: "Kaggle tuvo un error", CANCEL_REQUESTED: "Cancelado", CANCEL_ACKNOWLEDGED: "Cancelado",
 };
+// Si un libro lleva rato "en la fila", averigua por qué: casi siempre es que se acabaron las horas de GPU de la semana.
+const MIN_FILA = 10;
+async function revisarFila(g) {
+  if (g.estado !== "QUEUED") { delete g.enFilaDesde; delete g.fila; return; }
+  g.enFilaDesde = g.enFilaDesde || Date.now();
+  if (Date.now() - g.enFilaDesde < MIN_FILA * 60000) { delete g.fila; return; }
+  try {
+    const c = await KAGGLE.cuota(); cuotaCache.datos = c; cuotaCache.t = Date.now();
+    const total = c.total || 30;
+    g.fila = { sinHoras: c.usadas >= total - 0.2, usadas: c.usadas, total, renueva: c.renueva ? c.renueva.getTime() : null };
+  } catch { g.fila = { sinHoras: false }; }
+}
+function cuandoRenueva(ms) {
+  if (!ms) return "el viernes";
+  const d = new Date(ms);
+  return d.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" }) + " a las " + d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+}
+function textoFila(g) {
+  const min = Math.round((Date.now() - (g.enFilaDesde || Date.now())) / 60000);
+  const lleva = min >= 90 ? `${Math.round(min / 60)} h` : `${min} min`;
+  if (g.fila && g.fila.sinHoras)
+    return `Lleva ${lleva} en la fila porque se acabaron tus horas de GPU de esta semana ` +
+      `(${String(Math.round(g.fila.usadas * 10) / 10).replace(".", ",")} de ${g.fila.total} h). ` +
+      `Kaggle no lo empieza hasta que se renueven: ${cuandoRenueva(g.fila.renueva)}. No tienes que hacer nada; vuelve después de esa hora.`;
+  if (g.fila) return `Lleva ${lleva} en la fila. Todavía tienes horas de GPU, así que es Kaggle que está con mucha demanda; suele destrabarse sola. Puedes cerrar la app y volver más tarde.`;
+  return "Esperando una GPU libre. Suele tardar unos minutos.";
+}
+
 function textoEstadoCorto(g) {
   if (g.descargado) return "Descargando…";
   if (g.fase === "muestra") {
@@ -1360,6 +1388,7 @@ function textoEstadoCorto(g) {
     if (g.estado === "ERROR") return ESTADOS.ERROR;
     return "Creando una muestra de la voz…";
   }
+  if (g.estado === "QUEUED" && g.fila && g.fila.sinHoras) return "En la fila: sin horas de GPU hasta " + (g.fila.renueva ? new Date(g.fila.renueva).toLocaleDateString("es", { weekday: "long" }) : "el viernes");
   if (g.etapa === "primero" && g.estado !== "ERROR") return `Generando la primera parte (${g.pct || 20} %)…`;
   if (g.etapa === "resto") {
     if (g.estado === "QUEUED") return "Segunda parte: esperando una GPU en Kaggle";
@@ -1650,12 +1679,12 @@ function pintarGenerando(detalle) {
   if (!d && muestra) {
     if (g.muestraLista) d = "Así suena la voz con tu libro. Si te gusta, genera el libro completo" +
       (g.estimacionHoras ? ` (unas ${Math.max(1, Math.round(g.estimacionHoras))} h en Kaggle).` : ".") + " Si no, prueba otra voz.";
-    else if (g.estado === "QUEUED") d = "Esperando una GPU libre. Suele tardar unos minutos.";
+    else if (g.estado === "QUEUED") d = textoFila(g);
     else if (g.estado === "ERROR") d = g.error || "Abre Kaggle para ver el detalle.";
     else d = "Kaggle instala y carga la voz, y lee unos segundos del libro. Suele tardar 10 a 20 minutos.";
   }
   if (!d) {
-    if (g.estado === "QUEUED") d = "Esperando una GPU libre. Suele tardar unos minutos.";
+    if (g.estado === "QUEUED") d = textoFila(g);
     else if (g.estado === "RUNNING") {
       const partes = [];
       if (g.capitulosListos != null && g.capitulosTotales) partes.push(`${g.capitulosListos} de ${g.capitulosTotales} capítulos listos`);
@@ -1726,6 +1755,7 @@ async function actualizarGenerando() {
   try {
     const st = await estadoKernel(g);
     g.estado = st.estado; g.error = st.error;
+    await revisarFila(g);
     if (g.estado === "RUNNING") {
       const av = await KAGGLE.avance(g.kernel);
       if (av) Object.assign(g, {
