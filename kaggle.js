@@ -186,6 +186,29 @@ const KAGGLE = (() => {
     return { ...r, slug: real || slugKernel };
   }
 
+  // Vuelve a mandar el mismo notebook (misma dirección, mismo código y mismas entradas).
+  // Kaggle a veces deja una corrida en la fila para siempre aunque haya GPU libre; un envío nuevo parte normal.
+  async function reempujar(slugKernel) {
+    const usuario = ajustes().usuario;
+    const r = await api("kernels.KernelsApiService", "GetKernel", { userName: usuario, kernelSlug: slugKernel });
+    const m = r.metadata || {}, b = r.blob || {};
+    if (!b.source) throw new Error("Kaggle no devolvió el notebook para volver a mandarlo.");
+    const s = await api("kernels.KernelsApiService", "SaveKernel", {
+      slug: `${usuario}/${slugKernel}`,
+      newTitle: m.title || slugKernel,
+      text: b.source,
+      language: b.language || "python",
+      kernelType: b.kernelType || "notebook",
+      isPrivate: true,
+      enableGpu: true,
+      enableInternet: true,
+      datasetDataSources: m.datasetDataSources || [],
+      kernelDataSources: m.kernelDataSources || [],
+    });
+    if (s.error) throw new Error(textoError(s.error));
+    return s;
+  }
+
   // ---------- seguimiento ----------
   async function estado(slugKernel) {
     const r = await api("kernels.KernelsApiService", "GetKernelSessionStatus", { userName: ajustes().usuario, kernelSlug: slugKernel });
@@ -270,6 +293,6 @@ const KAGGLE = (() => {
 
   return {
     ajustes, guardarAjustes, listo, intermediario, probar, confirmarUsuario, crearDataset,
-    prepararNotebook, lanzarNotebook, estado, avance, archivosDeSalida, descargar, cuota, misNotebooks,
+    prepararNotebook, lanzarNotebook, reempujar, estado, avance, archivosDeSalida, descargar, cuota, misNotebooks,
   };
 })();
